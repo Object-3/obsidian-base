@@ -3,6 +3,11 @@
   "userIgnoreFilters": [
     ".agents/",
     ".claude/",
-    ".codex/"
+    ".codex/",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "README.md",
+    "llms.txt",
+    "log.md"
   ]
 }
