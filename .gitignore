@@ -17,6 +17,14 @@
 # Trash
 .trash/
 
+# --- Local-only assets (large/sensitive originals: PDFs, images, datasets) ---
+# These stay on your machine and NEVER reach GitHub. Keep a small markdown
+# reference note in the vault instead (see AGENTS.md). The folder's README/.gitkeep
+# are tracked so the folder ships with the template.
+_local/*
+!_local/.gitkeep
+!_local/README.md
+
 # --- Agent skill sync (regenerated each run; not the source of truth) ---
 .agents/.skills-last-sync
 

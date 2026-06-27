@@ -19,6 +19,13 @@ ask() { # var prompt default
   printf -v "$var" '%s' "${val:-$def}"
 }
 
+# Wire the repo's tracked git hooks (e.g. the large-file size guard). Idempotent.
+if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 && [ -d "$ROOT/.githooks" ]; then
+  git -C "$ROOT" config core.hooksPath .githooks
+  chmod +x "$ROOT/.githooks/"* 2>/dev/null || true
+  echo "git hooks enabled (core.hooksPath=.githooks)"
+fi
+
 echo "== base vault onboarding =="
 ask VAULT_NAME    "Vault name"                            "My Knowledge Base"
 ask VAULT_TAGLINE "One-line description (tagline)"        "An agent-ready knowledge base."
