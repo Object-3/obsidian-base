@@ -37,3 +37,6 @@ _local/*
 .LSOverride
 Icon?
 ._*
+
+# Local REST API key (per-machine secret for the Obsidian MCP)
+.obsidian/.rest-api-key

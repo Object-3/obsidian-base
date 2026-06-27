@@ -10,7 +10,8 @@
 # What it refreshes (base-owned engine only):
 #   AGENTS.md, CLAUDE.md, .gitignore, .gitattributes, .agents/SKILLS.md,
 #   .agents/skill-sources.json, .agents/scripts/*, .claude/hooks/*, .claude/settings.json,
-#   .githooks/*, and the base-AUTHORED skills .agents/skills/{update-base,setup-vault}
+#   .githooks/*, setup/*, SETUP.md, and the base-AUTHORED skills
+#   .agents/skills/{update-base,setup-vault,onboard}
 #
 # What it NEVER touches (yours):
 #   your notes, .agents/vault-profile.md, .agents/skill-sources.local.json, the VENDORED
@@ -46,6 +47,9 @@ PATHS=(
   # improvements to them propagate. Vendored skills come via sync-skills, not here.
   ".agents/skills/update-base"
   ".agents/skills/setup-vault"
+  ".agents/skills/onboard"
+  "setup"
+  "SETUP.md"
 )
 
 # Wire up / refresh the `base` remote, then fetch just the wanted ref (shallow).

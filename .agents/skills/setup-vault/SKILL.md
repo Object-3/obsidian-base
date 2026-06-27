@@ -8,6 +8,12 @@ description: One-time onboarding for a vault created from the base vault. Use wh
 This vault was created from the base vault and still has template placeholders in
 `.agents/vault-profile.md`. Personalize it quickly, then sync skills.
 
+> **Starting from a clean machine** (nothing installed, no vault yet)? Use the
+> **`onboard`** skill instead — it installs prerequisites, creates the vault, wires the
+> MCP, and runs *this* personalization step as part of the flow. `setup-vault` is the
+> standalone personalization step for when a vault already exists (e.g. you used GitHub
+> "Use this template").
+
 ## Steps
 
 1. **Check it's needed.** Grep for `{{` in `.agents/vault-profile.md` (and `index.md`,

@@ -1,9 +1,31 @@
 # obsidian-base-vault
 
 A forkable/templatable base for an **agentic, LLM-agnostic Obsidian knowledge base**.
-Create your vault from it, run a 30-second onboarding, and start writing — with a
-curated set of Agent Skills already wired in and working across Claude Code, OpenAI
-Codex, and any tool that reads the open `SKILL.md` / `AGENTS.md` standards.
+Create your vault from it, start writing — with a curated set of Agent Skills already
+wired in and working across Claude Code, OpenAI Codex, and any tool that reads the open
+`SKILL.md` / `AGENTS.md` standards.
+
+## 🚀 Brand new? Start here
+
+**Non-technical, clean machine (no GitHub/Obsidian needed)** → follow **[SETUP.md](SETUP.md)**:
+one command sets up everything, local-first.
+
+```bash
+# macOS
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Object-3/obsidian-base/main/setup/setup.sh)"
+```
+```powershell
+# Windows
+irm https://raw.githubusercontent.com/Object-3/obsidian-base/main/setup/setup.ps1 | iex
+```
+
+**Or just ask an AI assistant.** Point Claude Code or Claude Desktop at this repo and
+say *"help me set one up"* — the **`onboard`** skill (`.agents/skills/onboard/`) drives
+the whole setup with its tools and self-heals when something needs fixing.
+
+> **For agents reading this repo:** to onboard a user, run the **onboard** skill (or
+> `setup/setup.sh` / `setup/setup.ps1`) and verify each step with your tools. It creates
+> a *separate* local vault — it does not turn this base clone into their vault.
 
 ## Two ways to use it
 
