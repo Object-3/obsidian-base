@@ -1,7 +1,12 @@
 /* Hide agent/engine scaffolding from the Obsidian file explorer so non-technical
    note-takers see only their knowledge. These files still exist on disk and in git;
-   they're just not shown in the sidebar. Toggle by disabling this snippet in
-   Settings → Appearance → CSS snippets. Add/remove paths below to taste. */
+   they're just not shown in the sidebar.
+
+   BASE-OWNED: `update-base` keeps this snippet in sync, so edits here are overwritten
+   on the next update. To hide additional paths in just YOUR vault, add a SEPARATE
+   snippet (e.g. `hide-engine-files.local.css`) and enable it alongside this one — the
+   base never touches your own snippet files. Toggle the whole behavior off in
+   Settings → Appearance → CSS snippets. */
 
 /* Root engine/meta files */
 .nav-file-title[data-path="AGENTS.md"],
@@ -12,8 +17,8 @@
   display: none !important;
 }
 
-/* Scaffolding folders (hide the whole tree item, not just the title) */
-.nav-folder:has(> .nav-folder-title[data-path="_local"]),
-.nav-folder:has(> .nav-folder-title[data-path="assets"]) {
-  display: none !important;
-}
+/* NOTE: `_local/` and `assets/` are intentionally NOT hidden. They are content
+   file-drop locations, not engine scaffolding: `_local/` is where a note-taker puts
+   large/sensitive originals (PDFs, datasets) too big for git, and `assets/` is
+   Obsidian's default attachment folder. Non-technical users must be able to see and
+   access them freely — hiding them would defeat their purpose. */
