@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Size guard: block commits that add a large file to git history. GitHub rejects
+# files >100MB and bloats permanently on big binaries. Large/sensitive originals
+# (PDFs, images, datasets) belong in the gitignored `_local/` folder or in external
+# storage (e.g. Google Drive) with a small reference note — NOT in the repo.
+#
+# Enable once with:  git config core.hooksPath .githooks   (init-vault.sh does this).
+#
+# NOTE: the Obsidian Git plugin may use a bundled JS git that skips native hooks. If
+# so, this won't fire on auto-commits — the durable rule is "big files go in _local/".
+# When it DOES fire (CLI / agent commits, or Obsidian Git using system git), it shows
+# a clear error instead of silently bloating the repo.
+set -euo pipefail
+
+MAX_BYTES=$((25 * 1024 * 1024))   # 25 MB
+big=""
+while IFS= read -r -d '' file; do
+  [ -f "$file" ] || continue
+  size=$(wc -c < "$file" | tr -d '[:space:]')
+  if [ "${size:-0}" -gt "$MAX_BYTES" ]; then
+    big+="  $(printf '%5d' $((size/1024/1024)))MB  $file"$'\n'
+  fi
+done < <(git diff --cached --name-only --diff-filter=AM -z)
+
+if [ -n "$big" ]; then
+  echo "✋ commit blocked — file(s) over 25MB would enter git history:" >&2
+  printf '%s' "$big" >&2
+  echo "Move large/sensitive originals to the gitignored '_local/' folder (or Google" >&2
+  echo "Drive) and keep a small markdown reference note instead. See AGENTS.md." >&2
+  echo "To override for one commit (rarely needed): git commit --no-verify" >&2
+  exit 1
+fi

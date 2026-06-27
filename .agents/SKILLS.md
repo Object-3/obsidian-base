@@ -16,7 +16,8 @@ Built-in / official cloud-native skills are left alone.
 │   └── INDEX.md              auto-generated catalog of all skills + "use when"
 ├── agents/                   CANONICAL subagents
 ├── scripts/sync-skills.sh    the sync script
-├── skill-sources.json        SOURCE OF TRUTH: which GitHub skills to vendor
+├── skill-sources.json        BASE-OWNED curated sources (refreshed by update-base)
+├── skill-sources.local.json  THIS VAULT'S extra sources (never synced; optional)
 └── skill-sources.lock.json   bookkeeping for clean re-sync
 .claude/skills  -> ../.agents/skills    (pointer for Claude Code)
 .codex/skills   -> ../.agents/skills    (pointer for OpenAI Codex)
@@ -32,10 +33,18 @@ appear in the vault's graph, search, or tag index.
 
 ## Adding / removing a skill
 
-1. Edit `.agents/skill-sources.json`:
+Add **your own** sources to `.agents/skill-sources.local.json` (create it if absent;
+same `{"sources":[…]}` shape). Leave `.agents/skill-sources.json` to the base — it's
+the curated list that `update-base` refreshes. `sync-skills.sh` **merges both**, with
+local entries winning on a name collision (so you can override a base source).
+
+1. Edit `.agents/skill-sources.local.json` (yours) — or `skill-sources.json` if you're
+   the base maintainer:
    ```json
-   { "name": "my-source", "repo": "owner/repo", "skillsPath": "skills",
-     "agentsPath": "agents", "include": ["only-these","skill-dirs"] }
+   { "sources": [
+     { "name": "my-source", "repo": "owner/repo", "skillsPath": "skills",
+       "agentsPath": "agents", "include": ["only-these","skill-dirs"] }
+   ] }
    ```
    - `skillsPath` — directory in the repo under which each `*/SKILL.md` lives (default `skills`).
    - `include` — optional allow-list of skill directory names (cherry-pick across nested folders).

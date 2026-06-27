@@ -8,12 +8,15 @@ Codex, and any tool that reads the open `SKILL.md` / `AGENTS.md` standards.
 ## Two ways to use it
 
 - **Use this template** (GitHub → "Use this template") → an **independent** repo.
-  No upstream link, no drift, nothing to maintain. Best for non-technical users.
-- **Fork it** → keeps an upstream link so you can pull base improvements later
-  ("Sync fork" / merge). Best if you maintain a fleet of vaults off this base.
+  Recommended for everyone, including whole fleets. Pull base improvements on demand
+  with `update-base` (below).
+- **Fork it** only if you specifically want GitHub's fork graph. Note: GitHub won't
+  let you fork into the **same org** that owns this base, and "Sync fork" conflicts
+  as soon as a vault diverges (which it always does) — so `update-base` is the real
+  sync mechanism either way.
 
-Either way you can also pull base updates on demand with `update-base` (below) — no
-git knowledge required.
+Base updates flow via `update-base`, which is **git-native** and overlays only the
+shared engine — your notes are never touched.
 
 ## Quickstart
 
@@ -40,17 +43,30 @@ Run the base updater (or say **"/update-base"** to an agent):
 .agents/scripts/sync-skills.sh    # refresh skills if the scripts changed
 ```
 
-It refreshes only base-owned engine files (`AGENTS.md`, `CLAUDE.md`, scripts, hooks,
-`.gitignore`, `.agents/SKILLS.md`) and **never** touches your notes,
-`vault-profile.md`, or your `skill-sources.json`. Point it at your base with
-`BASE_REPO=owner/repo`.
+It's **git-native**: it adds a `base` git remote, fetches the wanted ref, and overlays
+only base-owned engine files (`AGENTS.md`, `CLAUDE.md`, scripts, hooks, `.gitignore`,
+`.gitattributes`, `.agents/SKILLS.md`, and the curated `.agents/skill-sources.json`).
+It prunes files the base removed and **never** touches your notes, `vault-profile.md`,
+or your `skill-sources.local.json`. Configure with `BASE_REPO=owner/repo`,
+`BASE_REPO_URL=<any git url>`, or pin a tag/SHA with `BASE_REF=` (or a `.agents/.base-ref`
+file). Because it's an engine change, commit it on a branch and open a PR.
 
 ## Customizing the skill set
 
-Edit `.agents/skill-sources.json` (add/remove GitHub skill sources; `include`
-allow-list to cherry-pick), then run `.agents/scripts/sync-skills.sh`. See
-`.agents/SKILLS.md` for the full mechanism, the Windows symlink fallback, and how
-same-named skills resolve across Claude/Codex/user scopes.
+The curated list lives in base-owned `.agents/skill-sources.json` (refreshed by
+`update-base`). Put **your own** sources in `.agents/skill-sources.local.json`
+(never overwritten); `sync-skills.sh` **merges both** (local wins on name collisions).
+Then run `.agents/scripts/sync-skills.sh`. See `.agents/SKILLS.md` for the full
+mechanism, the Windows symlink fallback, and skill-name resolution.
+
+## Sync model (humans + agents, no extra surface)
+
+The vault ships a recommended **Obsidian Git** config (`.obsidian/plugins/obsidian-git/data.json`):
+auto commit-and-sync to `main`, **pull-on-start**, merge strategy. Non-technical
+users just write notes — sync is automatic, no git. Append-only/generated files
+(`log.md`, `INDEX.md`) use `merge=union` in `.gitattributes` so Obsidian Git's local
+merges resolve without conflict markers. **Content** (human- or MCP-authored notes)
+flows to `main`; **engine** changes go on a branch + PR (see `AGENTS.md`).
 
 ## Requirements
 

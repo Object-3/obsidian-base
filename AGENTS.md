@@ -53,6 +53,8 @@ related:                                 # optional, list of links
 | `index.md` | Catalog of every note (link + one-line summary), the navigation backbone | read first; update on every note add/change |
 | `log.md` | Append-only record of ingests/changes | append an entry per working session |
 | `raw/` | **Immutable** source material (clippings, transcripts, exports) | read-only — never edit a raw source |
+| `assets/` | Small images embedded in notes (diagrams, screenshots); tracked in git | Obsidian (default attachment folder) |
+| `_local/` | **Gitignored** large/sensitive originals (PDFs, big images, datasets) — stay on this machine | local agents + Obsidian; never committed |
 | `docs/knowledge/` | Compounded learnings (the compounding loop) | `kw-compound` writes; `knowledge-base-researcher` + `stale-knowledge-checker` read |
 | `docs/solutions/` | Solved-problem / pattern write-ups | `past-work-researcher` reads |
 | `plans/` | In-progress plans & brainstorms | `kw-plan` / `kw-work` write; `past-work-researcher` reads |
@@ -63,6 +65,27 @@ related:                                 # optional, list of links
 **Folders beginning with a dot (`.agents`, `.claude`, `.codex`, `.obsidian`) are
 ignored by Obsidian** — so skills, agents, and config never pollute the knowledge
 graph, search, or tag index. Keep all skill/agent machinery under dot-folders.
+
+## Large files & external sources
+
+The repo holds **markdown** (the notes). Large or binary or sensitive originals —
+PDFs, big images, datasets, exports — **do not belong in git** (GitHub caps files at
+100MB, bloats permanently on binaries, and Obsidian Git auto-commits everything). A
+pre-commit size guard blocks files over ~25MB.
+
+Instead, keep the *bytes* outside git and a small **reference note** in the vault
+(in git) that captures the distilled knowledge plus a pointer to the original — the
+same idea as `raw/`, but for things too big or private to commit:
+
+- **Local & private** → drop the file in `_local/` (gitignored; stays on this
+  machine). Obsidian and local agents can still read/embed it.
+- **Shared, large, or needed on other devices** → put it in **Google Drive** (or
+  similar) and link to it; agents read it via the Google Drive MCP.
+- **Small images that are genuinely part of a note** (a diagram) → fine in git;
+  they go in `assets/` (the default attachment folder).
+
+A reference note should record: what the file is, a short summary / key points, where
+the original lives (the `_local/` path or the Drive link), and the usual frontmatter.
 
 ## Operating rules (LLM-Wiki pattern, after Karpathy)
 
@@ -90,12 +113,33 @@ including ephemeral cloud containers that don't auto-install them.
   and when to use it. **Consult it to choose a skill.**
 - **Canonical location:** `.agents/skills/`; `.claude/skills` and `.codex/skills`
   point to it.
-- **Add a skill:** edit `.agents/skill-sources.json`, then run
-  `.agents/scripts/sync-skills.sh`.
+- **Add a skill — vault-specific:** put your own sources in
+  `.agents/skill-sources.local.json` (never overwritten by base updates), then run
+  `.agents/scripts/sync-skills.sh`. The base's curated list lives in
+  `.agents/skill-sources.json` (base-owned); the sync **merges both**.
 - **Get base improvements:** run `.agents/scripts/update-base.sh` (or the
-  `/update-base` skill) to pull the latest base layer from the upstream base vault,
-  leaving your notes and `vault-profile.md` untouched.
+  `/update-base` skill). It's **git-native** — it fetches a `base` git remote and
+  overlays only the base-owned engine paths (including the curated
+  `skill-sources.json`), leaving your notes, `vault-profile.md`, and
+  `skill-sources.local.json` untouched. Then run `sync-skills.sh`.
 - Full mechanism: [`.agents/SKILLS.md`](.agents/SKILLS.md).
+
+## Working in this vault: content vs engine
+
+Two kinds of change flow through this repo, and they use **different paths**:
+
+- **Content** — notes, written by a person in Obsidian *or* by an agent via the
+  Obsidian MCP. These land in the **live vault working tree on `main`** and are
+  synced automatically by Obsidian Git (commit-and-sync + pull-on-start). Nobody
+  runs git by hand. This is the path for all everyday knowledge work.
+- **Engine / structural** — the base layer: `AGENTS.md`, scripts, hooks,
+  `skill-sources.json`, schema-wide refactors, anything `update-base` owns. Make
+  these on a **branch and open a PR**, ideally from a **separate checkout/worktree**,
+  not the live auto-syncing vault — otherwise Obsidian Git can sweep a half-applied
+  engine change straight onto `main`.
+
+Rule of thumb: *if a non-technical note-taker would never touch it, it's an engine
+change → branch + PR.*
 
 ## For agents
 
