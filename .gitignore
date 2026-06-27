@@ -3,10 +3,16 @@
 .obsidian/workspace-mobile.json
 .obsidian/cache
 .obsidian/.cache/
+.obsidian/updates.json
 
 # Plugin code + runtime data: bulky bundled JS AND may hold secrets
-# (e.g. the Local REST API plugin stores its apiKey in data.json). Never track.
-.obsidian/plugins/
+# (e.g. the Local REST API plugin stores its apiKey in data.json). Never track —
+# EXCEPT the Obsidian Git settings file, which holds no secrets and which we share
+# so every vault inherits the recommended sync config (pull-on-start, merge, etc.).
+.obsidian/plugins/*
+!.obsidian/plugins/obsidian-git/
+.obsidian/plugins/obsidian-git/*
+!.obsidian/plugins/obsidian-git/data.json
 
 # Trash
 .trash/

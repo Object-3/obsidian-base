@@ -22,6 +22,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MANIFEST="$ROOT/.agents/skill-sources.json"
+LOCAL_MANIFEST="$ROOT/.agents/skill-sources.local.json"
 CANON_SKILLS="$ROOT/.agents/skills"
 CANON_AGENTS="$ROOT/.agents/agents"
 LOCK="$ROOT/.agents/skill-sources.lock.json"
@@ -37,10 +38,25 @@ POINTERS=(
 
 command -v jq   >/dev/null || { echo "jq is required"   >&2; exit 1; }
 command -v curl >/dev/null || { echo "curl is required" >&2; exit 1; }
-[ -f "$MANIFEST" ] || { echo "manifest not found: $MANIFEST" >&2; exit 1; }
+[ -f "$MANIFEST" ] || [ -f "$LOCAL_MANIFEST" ] || { echo "no skill-sources.json or skill-sources.local.json found" >&2; exit 1; }
 
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 mkdir -p "$CANON_SKILLS" "$CANON_AGENTS"
+
+# Merge the base-owned curation (skill-sources.json, refreshed by update-base) with
+# this vault's OWN additions (skill-sources.local.json, never synced). On a name
+# collision the LOCAL entry wins, so a vault can override a base source (e.g. pin a
+# different ref or include-list). This is what lets base curation propagate to the
+# fleet via update-base while each vault keeps its custom sources.
+MERGED="$TMP/skill-sources.merged.json"
+jq -s '{ sources: ( ((.[1].sources // []) + (.[0].sources // [])) | unique_by(.name) ) }' \
+  <([ -f "$MANIFEST" ]       && cat "$MANIFEST"       || echo "{}") \
+  <([ -f "$LOCAL_MANIFEST" ] && cat "$LOCAL_MANIFEST" || echo "{}") \
+  > "$MERGED"
+MANIFEST="$MERGED"
+if [ -f "$LOCAL_MANIFEST" ]; then
+  echo "merged $(jq '.sources | length' "$LOCAL_MANIFEST") local source(s) from skill-sources.local.json"
+fi
 
 # 1) Remove artifacts from the previous run (clean update; only locked paths,
 #    so hand-made skills/agents placed in the canonical dirs are never touched).

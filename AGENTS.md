@@ -90,12 +90,33 @@ including ephemeral cloud containers that don't auto-install them.
   and when to use it. **Consult it to choose a skill.**
 - **Canonical location:** `.agents/skills/`; `.claude/skills` and `.codex/skills`
   point to it.
-- **Add a skill:** edit `.agents/skill-sources.json`, then run
-  `.agents/scripts/sync-skills.sh`.
+- **Add a skill — vault-specific:** put your own sources in
+  `.agents/skill-sources.local.json` (never overwritten by base updates), then run
+  `.agents/scripts/sync-skills.sh`. The base's curated list lives in
+  `.agents/skill-sources.json` (base-owned); the sync **merges both**.
 - **Get base improvements:** run `.agents/scripts/update-base.sh` (or the
-  `/update-base` skill) to pull the latest base layer from the upstream base vault,
-  leaving your notes and `vault-profile.md` untouched.
+  `/update-base` skill). It's **git-native** — it fetches a `base` git remote and
+  overlays only the base-owned engine paths (including the curated
+  `skill-sources.json`), leaving your notes, `vault-profile.md`, and
+  `skill-sources.local.json` untouched. Then run `sync-skills.sh`.
 - Full mechanism: [`.agents/SKILLS.md`](.agents/SKILLS.md).
+
+## Working in this vault: content vs engine
+
+Two kinds of change flow through this repo, and they use **different paths**:
+
+- **Content** — notes, written by a person in Obsidian *or* by an agent via the
+  Obsidian MCP. These land in the **live vault working tree on `main`** and are
+  synced automatically by Obsidian Git (commit-and-sync + pull-on-start). Nobody
+  runs git by hand. This is the path for all everyday knowledge work.
+- **Engine / structural** — the base layer: `AGENTS.md`, scripts, hooks,
+  `skill-sources.json`, schema-wide refactors, anything `update-base` owns. Make
+  these on a **branch and open a PR**, ideally from a **separate checkout/worktree**,
+  not the live auto-syncing vault — otherwise Obsidian Git can sweep a half-applied
+  engine change straight onto `main`.
+
+Rule of thumb: *if a non-technical note-taker would never touch it, it's an engine
+change → branch + PR.*
 
 ## For agents
 
