@@ -23,6 +23,9 @@ VAULT_NAME="${VAULT_NAME:-}"                 # prompted if empty
 MCP_CLIENTS="${MCP_CLIENTS:-both}"           # desktop | code | both | none
 OBSIDIAN_HOST="${OBSIDIAN_HOST:-127.0.0.1}"
 OBSIDIAN_PORT="${OBSIDIAN_PORT:-27124}"
+SKIP_PREREQS="${SKIP_PREREQS:-}"             # set=1 to skip installing brew/git/jq/uv/Obsidian
+NO_OPEN="${NO_OPEN:-}"                        # set=1 to not launch Obsidian at the end
+CLAUDE_DESKTOP_CONFIG="${CLAUDE_DESKTOP_CONFIG:-}"   # override Claude Desktop config path (testing)
 ASSUME_YES=""; [ "${1:-}" = "--yes" ] && ASSUME_YES=1
 
 say()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
@@ -42,6 +45,7 @@ case "$OS" in Darwin) PLATFORM=mac ;; Linux) PLATFORM=linux ;; *) die "unsupport
 
 # ---- 1. prerequisites -----------------------------------------------------
 install_prereqs() {
+  [ -n "$SKIP_PREREQS" ] && { say "Skipping prerequisite install (SKIP_PREREQS set)."; return; }
   say "Checking prerequisites…"
   if [ "$PLATFORM" = mac ]; then
     if ! have brew; then
@@ -132,9 +136,11 @@ configure_mcp() {
   [ -n "$key" ] || { warn "no REST API key; skipping MCP wiring"; return; }
 
   if [ "$MCP_CLIENTS" = desktop ] || [ "$MCP_CLIENTS" = both ]; then
-    local cfg
-    [ "$PLATFORM" = mac ] && cfg="$HOME/Library/Application Support/Claude/claude_desktop_config.json" \
-                          || cfg="$HOME/.config/Claude/claude_desktop_config.json"
+    local cfg="$CLAUDE_DESKTOP_CONFIG"
+    if [ -z "$cfg" ]; then
+      [ "$PLATFORM" = mac ] && cfg="$HOME/Library/Application Support/Claude/claude_desktop_config.json" \
+                            || cfg="$HOME/.config/Claude/claude_desktop_config.json"
+    fi
     mkdir -p "$(dirname "$cfg")"; [ -f "$cfg" ] || echo '{}' > "$cfg"
     say "Wiring MCP into Claude Desktop…"
     jq --arg k "$key" --arg h "$OBSIDIAN_HOST" --arg p "$OBSIDIAN_PORT" '
@@ -156,6 +162,7 @@ configure_mcp() {
 }
 
 open_vault() {
+  [ -n "$NO_OPEN" ] && { say "Skipping Obsidian launch (NO_OPEN set)."; return; }
   say "Opening your vault in Obsidian…"
   if [ "$PLATFORM" = mac ]; then open -a Obsidian "$VAULT_DIR" 2>/dev/null || open "obsidian://open?path=$(python3 -c 'import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))' "$VAULT_DIR")" 2>/dev/null || true; fi
 }
