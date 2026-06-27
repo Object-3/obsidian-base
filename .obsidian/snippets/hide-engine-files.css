@@ -1,0 +1,19 @@
+/* Hide agent/engine scaffolding from the Obsidian file explorer so non-technical
+   note-takers see only their knowledge. These files still exist on disk and in git;
+   they're just not shown in the sidebar. Toggle by disabling this snippet in
+   Settings → Appearance → CSS snippets. Add/remove paths below to taste. */
+
+/* Root engine/meta files */
+.nav-file-title[data-path="AGENTS.md"],
+.nav-file-title[data-path="CLAUDE.md"],
+.nav-file-title[data-path="README.md"],
+.nav-file-title[data-path="llms.txt"],
+.nav-file-title[data-path="log.md"] {
+  display: none !important;
+}
+
+/* Scaffolding folders (hide the whole tree item, not just the title) */
+.nav-folder:has(> .nav-folder-title[data-path="_local"]),
+.nav-folder:has(> .nav-folder-title[data-path="assets"]) {
+  display: none !important;
+}
