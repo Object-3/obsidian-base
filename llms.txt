@@ -1,0 +1,24 @@
+# {{VAULT_NAME}}
+
+> {{VAULT_TAGLINE}} An agent-ready Obsidian knowledge base in plain Markdown — usable by any LLM or agent.
+
+## Start here
+
+- [Agent contract (AGENTS.md)](AGENTS.md): conventions, frontmatter, directory map, operating rules
+- [Index](index.md): catalog of every note — read first to orient
+- [Activity log](log.md): append-only record of changes
+- [README](README.md): what this is and how to set it up
+
+## Notes
+
+_(Add links to your notes here as the vault grows, or rely on index.md.)_
+
+## Skills (agent capabilities)
+
+- [Skills index](.agents/skills/INDEX.md): all vendored Agent Skills, with "use when" for each — usable by Claude, Codex, and any SKILL.md-aware agent
+- [Skills mechanism & how to add more](.agents/SKILLS.md)
+
+## Optional
+
+- [Plans](plans/): in-progress plans & brainstorms
+- [Compounded learnings](docs/knowledge/): reusable learnings from past cycles

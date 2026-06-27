@@ -1,0 +1,33 @@
+---
+title:   "Index — {{VAULT_NAME}}"
+type:    index
+status:  active
+tags:    [{{PRIMARY_TAG}}, index]
+created: 2026-06-27
+updated: 2026-06-27
+---
+
+# Index
+
+Catalog of every note in this vault. **Read this first** to orient. Update it
+whenever you add or materially change a note (see operating rules in `AGENTS.md`).
+
+> Tip: organize by topic sections below, or keep notes flat and navigate by
+> `type`/`status`/`tags` frontmatter — Obsidian doesn't need folders.
+
+## Notes
+
+_(No notes yet. Add your first one, then catalog it here.)_
+
+## Plans
+
+- `plans/` — in-progress plans & brainstorms.
+
+## Compounded learnings (`docs/knowledge/`)
+
+How this vault's agent scaffolding works (kept from the base template — useful
+background for anyone building on it):
+
+- [[vendor-skills-into-repo-for-cloud-sessions]] — `playbook` · why skills are vendored into the repo.
+- [[llm-agnostic-agent-repo-layout]] — `playbook` · AGENTS.md + SKILL.md are open standards; `.agents/` canonical + tool pointers.
+- [[vet-vendored-skills-and-avoid-sync-clobber]] — `correction` · vet skills for hardcoded paths; hand-author repo-aware skills outside the sync.

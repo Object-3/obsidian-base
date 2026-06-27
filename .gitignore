@@ -1,0 +1,25 @@
+# --- Obsidian per-machine state (keep shared settings, drop local/cache) ---
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+.obsidian/cache
+.obsidian/.cache/
+
+# Plugin code + runtime data: bulky bundled JS AND may hold secrets
+# (e.g. the Local REST API plugin stores its apiKey in data.json). Never track.
+.obsidian/plugins/
+
+# Trash
+.trash/
+
+# --- Agent skill sync (regenerated each run; not the source of truth) ---
+.agents/.skills-last-sync
+
+# Local-only agent settings (per-machine overrides, may hold secrets)
+.claude/settings.local.json
+
+# --- macOS / OS cruft ---
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*

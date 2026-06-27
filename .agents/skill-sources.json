@@ -1,0 +1,36 @@
+{
+  "_comment": "Curated GitHub-hosted Agent Skills (open SKILL.md standard) vendored into canonical .agents/skills so they load in EVERY session of every agent (Claude, Codex, etc.), including ephemeral cloud containers that do NOT auto-install marketplace/GitHub skills. Only list skills NOT already available in your agent's cloud. After editing, run: .agents/scripts/sync-skills.sh  (a SessionStart hook also refreshes stale/broken copies). Do NOT add author-specific skills with hardcoded local paths; hand-author repo-aware skills directly in .agents/skills instead (those aren't in the lock, so sync won't clobber them).",
+  "sources": [
+    {
+      "name": "compound-knowledge",
+      "repo": "EveryInc/compound-knowledge-plugin",
+      "skillsPath": "plugins/compound-knowledge/skills",
+      "agentsPath": "plugins/compound-knowledge/agents",
+      "note": "kw:* knowledge-work workflow (brainstorm -> plan -> confidence -> review -> work -> compound) + its research/review subagents."
+    },
+    {
+      "name": "matt-pocock",
+      "repo": "mattpocock/skills",
+      "skillsPath": "skills",
+      "include": [
+        "edit-article",
+        "writing-fragments",
+        "writing-beats",
+        "writing-shape",
+        "decision-mapping",
+        "grill-me",
+        "grilling",
+        "handoff",
+        "teach",
+        "writing-great-skills"
+      ],
+      "note": "Matt Pocock's KNOWLEDGE-WORK / WRITING / OBSIDIAN skills only. His engineering set is intentionally excluded — if needed it belongs in a separate code-focused vault. 'include' cherry-picks specific skill dirs across his personal/, in-progress/, and productivity/ folders."
+    },
+    {
+      "name": "corey-haines-marketing",
+      "repo": "coreyhaines31/marketingskills",
+      "skillsPath": "skills",
+      "note": "Corey Haines' SaaS marketing skills (CRO, copywriting, content strategy, ads, cold email, etc.)."
+    }
+  ]
+}
