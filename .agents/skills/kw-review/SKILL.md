@@ -45,11 +45,11 @@ Read the file or accept pasted content. If the content references data (metrics,
 
 <parallel_tasks>
 
-1. **Strategic Alignment Reviewer** — Launch Task agent: `compound-knowledge:review:strategic-alignment-reviewer`
+1. **Strategic Alignment Reviewer** — Launch Task agent: `strategic-alignment-reviewer`
    - Pass: the full content + any business context from the project's CLAUDE.md
    - It checks: goal clarity, falsifiable hypothesis, success metrics, scope proportionality, resource awareness, strategic consistency
 
-2. **Data Accuracy Reviewer** — Launch Task agent: `compound-knowledge:review:data-accuracy-reviewer`
+2. **Data Accuracy Reviewer** — Launch Task agent: `data-accuracy-reviewer`
    - Pass: the full content + any data context files referenced in the project's CLAUDE.md
    - It checks: source citations, comparison baselines, canonical definitions, freshness, caveats, hardcoded numbers
 
