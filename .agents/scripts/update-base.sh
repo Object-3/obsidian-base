@@ -75,7 +75,11 @@ for p in "${PATHS[@]}"; do
             <(git ls-files -- "$p" | sort) \
             <(git ls-tree -r --name-only FETCH_HEAD -- "$p" | sort))
 
-  # Overlay base content into working tree + index.
+  # Overlay base content — but only if it actually differs from current HEAD, so a
+  # no-op run honestly reports "up to date" instead of re-staging identical files.
+  if git diff --quiet HEAD FETCH_HEAD -- "$p"; then
+    continue
+  fi
   git checkout FETCH_HEAD -- "$p"
   echo "  synced: $p"; changed=$((changed+1))
 done
