@@ -28,6 +28,7 @@ CANON_AGENTS="$ROOT/.agents/agents"
 LOCK="$ROOT/.agents/skill-sources.lock.json"
 STAMP="$ROOT/.agents/.skills-last-sync"
 INDEX="$CANON_SKILLS/INDEX.md"
+LOCKDIR="$ROOT/.agents/.sync-skills.lock"   # concurrency guard (mkdir-based, portable)
 
 # tool pointer dirs -> what they point at (relative target | canonical abs)
 POINTERS=(
@@ -40,7 +41,24 @@ command -v jq   >/dev/null || { echo "jq is required"   >&2; exit 1; }
 command -v curl >/dev/null || { echo "curl is required" >&2; exit 1; }
 [ -f "$MANIFEST" ] || [ -f "$LOCAL_MANIFEST" ] || { echo "no skill-sources.json or skill-sources.local.json found" >&2; exit 1; }
 
-TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+# Concurrency guard. The Claude Code SessionStart hook backgrounds this sync, so a
+# manual run (or a second session starting) can overlap one already in flight. Two
+# concurrent runs racing on the per-skill rm+cp below produced nested self-duplicate
+# dirs (.agents/skills/ab-testing/ab-testing/). A portable mkdir-based lock (flock is
+# not built into macOS) lets the first run win; later runs exit early. A lock older
+# than 5 min is treated as stale (a crashed run) and reclaimed, so we never wedge
+# permanently.
+if ! mkdir "$LOCKDIR" 2>/dev/null; then
+  lock_mtime=$(stat -f %m "$LOCKDIR" 2>/dev/null || stat -c %Y "$LOCKDIR" 2>/dev/null || echo 0)
+  if [ "$(( $(date +%s) - lock_mtime ))" -ge 300 ] && rm -rf "$LOCKDIR" && mkdir "$LOCKDIR" 2>/dev/null; then
+    echo "reclaimed stale sync lock"
+  else
+    echo "another sync-skills run is in progress ($LOCKDIR); exiting" >&2
+    exit 0
+  fi
+fi
+
+TMP="$(mktemp -d)"; trap 'rm -rf "$TMP" "$LOCKDIR"' EXIT
 mkdir -p "$CANON_SKILLS" "$CANON_AGENTS"
 
 # Merge the base-owned curation (skill-sources.json, refreshed by update-base) with
@@ -60,6 +78,9 @@ fi
 
 # 1) Remove artifacts from the previous run (clean update; only locked paths,
 #    so hand-made skills/agents placed in the canonical dirs are never touched).
+#    First sweep any leftover atomic-swap staging dirs from a crashed prior run
+#    (safe now that we hold the lock — no live run can own one).
+find "$CANON_SKILLS" -maxdepth 1 -name '.*.tmp.*' -exec rm -rf {} + 2>/dev/null || true
 if [ -f "$LOCK" ]; then
   while IFS= read -r d; do [ -n "$d" ] && rm -rf "$CANON_SKILLS/$d"; done < <(jq -r '.skills[]?' "$LOCK")
   while IFS= read -r f; do [ -n "$f" ] && rm -f  "$CANON_AGENTS/$f"; done < <(jq -r '.agents[]?' "$LOCK")
@@ -99,7 +120,13 @@ for i in $(seq 0 $((count - 1))); do
     while IFS= read -r skfile; do
       sdir=$(dirname "$skfile"); base=$(basename "$sdir")
       if [ -n "$inc" ] && [ "${inc/|$base|/}" = "$inc" ]; then continue; fi
-      rm -rf "$CANON_SKILLS/$base"; cp -R "$sdir" "$CANON_SKILLS/$base"
+      # Atomic swap: copy into a temp sibling, then mv into place. `cp -R src dest`
+      # nests src *inside* dest when dest already exists, so copying straight onto a
+      # live dir is the footgun that produced nested duplicates. Staging + mv also
+      # keeps the canonical dir whole if the run is interrupted mid-copy.
+      stage="$CANON_SKILLS/.$base.tmp.$$"
+      rm -rf "$stage"; cp -R "$sdir" "$stage"
+      rm -rf "$CANON_SKILLS/$base"; mv "$stage" "$CANON_SKILLS/$base"
       VSKILLS+=("$base"); echo "   skill: $base"
     done < <(find "$src/$spath" -type f -name 'SKILL.md' | sort)
   else
@@ -213,7 +240,10 @@ make_pointer() { # relative_target  link_path  canonical_abs
   if ln -s "$rel" "$link" 2>/dev/null && [ -L "$link" ] && [ -d "$link" ]; then
     echo "   pointer (symlink): $2 -> $rel"
   else
-    rm -rf "$link"; cp -R "$canon" "$link"
+    # Same cp-into-existing-dir footgun as the skill copy above: stage then mv.
+    local stage="$link.tmp.$$"
+    rm -rf "$stage"; cp -R "$canon" "$stage"
+    rm -rf "$link"; mv "$stage" "$link"
     echo "   pointer (copy):    $2  (symlinks unavailable; copied)"
   fi
 }
