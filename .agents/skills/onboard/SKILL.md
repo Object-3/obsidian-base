@@ -46,7 +46,9 @@ Check each; if a check fails, investigate and repair, then re-check:
 - **MCP wired**: the key in `.obsidian/.rest-api-key` matches `OBSIDIAN_API_KEY` in the
   Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`
   on macOS, `%APPDATA%\Claude\claude_desktop_config.json` on Windows) and/or
-  `claude mcp list` shows `mcp-obsidian`. Fix the config if missing.
+  `claude mcp list` shows `mcp-obsidian`. Fix the config if missing — when re-adding
+  to Claude Code, use `claude mcp add mcp-obsidian --scope user …` so the vault is
+  reachable from every project, not just the setup directory.
 - **MCP runtime**: `uvx mcp-obsidian` is resolvable (uv installed). If not, install uv.
 - **REST API reachable** (after the human enables plugins): the Local REST API answers
   on `https://127.0.0.1:27124` with the key. If not yet, that's the human's trust click.
