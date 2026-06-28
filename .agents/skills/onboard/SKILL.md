@@ -70,10 +70,25 @@ Then confirm the agent can list files in the vault via the Obsidian MCP.
   notes would inform (past decisions, prior research, project context, preferences),
   read/search only, fall back gracefully when Obsidian is closed, and never write
   without an explicit ask. Keep the trigger scoped so it helps without hammering the MCP.
+- **Capture knowledge back to the vault** (recommended, pairs with the above): also
+  offer a standing global rule so that when work in *another* project produces a
+  durable, reusable artifact (e.g. from `kw-compound`/`kw-plan`, `ce-compound`, or a
+  research/decision/playbook write-up) with value beyond that one repo, the agent
+  **asks** whether to add it to the vault — then, on yes, reads the vault's conventions
+  via the MCP and writes a conformant note (right folder, frontmatter, `index.md` +
+  `log.md`). This is the explicit-ask exception to no-MCP-writes. Don't prompt for
+  project-only artifacts.
 
 ## Notes
 - **Local-first**: everything works with no GitHub account. `update-base` pulls engine
   updates from the public base remote without auth.
+- **Don't make non-technical users think in repos.** Their mental model is simply
+  *"I write in Obsidian; my agents can read it and, with my OK, add to it."* Obsidian
+  Git syncs underneath; the MCP is how agents reach in. Never tell them to `cd` into a
+  checkout or work "out of the repo" — the two standing rules above (recall + capture)
+  give them the agent-side behavior without exposing the mechanism. (Technical users
+  who want branch/PR discipline can still work directly in the vault checkout for
+  intentional KB work; that's their choice, not a requirement.)
 - Re-running the script is safe (idempotent). When stuck, prefer reading the script and
   running its steps one at a time over guessing.
 - This skill is hand-authored and repo-local (not vendored); `sync-skills.sh` won't
