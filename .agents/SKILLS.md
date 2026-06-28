@@ -56,6 +56,19 @@ Skill **command names come from the directory** (`.agents/skills/cro/` → `/cro
 A colon in a skill's frontmatter `name` (e.g. `kw:plan`) is ignored — it loads as
 `/kw-plan`.
 
+### Self-contained agent references
+
+Some vendored skills launch a subagent by a **plugin-namespaced** ID (e.g.
+`compound-knowledge:research:stale-knowledge-checker`) that only resolves when the
+upstream marketplace plugin is installed — which defeats the point of vendoring.
+After vendoring, `sync-skills.sh` rewrites any such reference down to the **flat**
+agent name (`stale-knowledge-checker`) **whenever that agent was also vendored flat
+into `.agents/agents/`** — the form that resolves in every agent and every cloud
+container. It only collapses names it can satisfy locally (an external
+`compound-engineering:ce-foo` with no vendored `ce-foo.md` is left untouched), only
+touches lock-tracked vendored files, and is idempotent — so repeated syncs and
+upstream skill updates flow through cleanly.
+
 ## Updating
 
 - Manual: `.agents/scripts/sync-skills.sh`, then commit.

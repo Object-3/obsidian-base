@@ -72,6 +72,14 @@ yours to organize freely.
 ignored by Obsidian** — so skills, agents, and config never pollute the knowledge
 graph, search, or tag index. Keep all skill/agent machinery under dot-folders.
 
+**Topical folders (optional, grow-into).** Notes live in the vault root until a
+single topic accumulates more than ~5–8 notes; then promote that topic to a
+**single-level, lowercase, topic-named** folder (e.g. `private-equity/`,
+`marketing/`). Folders are **coarse buckets only** — `tags`, `[[links]]`, and
+`index.md` stay the primary organizing axes (a note lives in exactly one folder but
+can carry many tags). Don't pre-create empty folders; promote at the threshold. Keep
+folders one level deep.
+
 ## Large files & external sources
 
 The repo holds **markdown** (the notes). Large, binary, or sensitive originals —
@@ -153,7 +161,8 @@ change → branch + PR.*
 
 - Navigate by frontmatter (`type`/`status`/`tags`) and `related` links; start from
   `index.md`. Read `.agents/vault-profile.md` for this vault's specifics.
-- New notes go in the vault root (or a topical subfolder), always with frontmatter
-  and `tags` including the vault's primary tag.
+- New notes go in the vault root (or a topical subfolder — see **Topical folders**
+  under the Directory map), always with frontmatter and `tags` including the vault's
+  primary tag.
 - This is a knowledge base, not a codebase: the deliverable is well-sourced,
   decisive, cross-linked Markdown.
