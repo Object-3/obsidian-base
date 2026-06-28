@@ -10,8 +10,9 @@
 # What it refreshes (base-owned engine only):
 #   AGENTS.md, CLAUDE.md, .gitignore, .gitattributes, .agents/SKILLS.md,
 #   .agents/skill-sources.json, .agents/scripts/*, .claude/hooks/*, .claude/settings.json,
-#   .githooks/*, the base-AUTHORED skills .agents/skills/{update-base,setup-vault}, and
-#   the one base-owned Obsidian snippet .obsidian/snippets/hide-engine-files.css
+#   .githooks/*, setup/*, SETUP.md, the base-AUTHORED skills
+#   .agents/skills/{update-base,setup-vault,onboard}, and the one base-owned Obsidian
+#   snippet .obsidian/snippets/hide-engine-files.css
 #
 # What it NEVER touches (yours):
 #   your notes, .agents/vault-profile.md, .agents/skill-sources.local.json, the VENDORED
@@ -49,6 +50,9 @@ PATHS=(
   # improvements to them propagate. Vendored skills come via sync-skills, not here.
   ".agents/skills/update-base"
   ".agents/skills/setup-vault"
+  ".agents/skills/onboard"
+  "setup"
+  "SETUP.md"
   # The one base-owned Obsidian snippet: the rule for which engine files to hide from
   # the explorer is engine, not content, so it stays in sync. Targeted at the exact
   # FILE (not .obsidian/snippets/) so your own snippets and the rest of .obsidian/ are
