@@ -17,6 +17,18 @@
   display: none !important;
 }
 
+/* Agent back-office folders: `docs/` (compounded knowledge + solved-problem write-ups)
+   and `plans/` (in-progress plans & brainstorms) are agent-maintained, not where a
+   note-taker writes — so they clutter the sidebar. They stay fully present on disk, in
+   git, searchable, and readable by every agent (this hides explorer rows only). Use
+   `.nav-folder-title` for folders (the file rows above use `.nav-file-title`); no
+   trailing slash in `data-path`. (`raw/` is intentionally left visible — it's
+   human-relevant source material.) */
+.nav-folder-title[data-path="docs"],
+.nav-folder-title[data-path="plans"] {
+  display: none !important;
+}
+
 /* NOTE: `_local/` and `assets/` are intentionally NOT hidden. They are content
    file-drop locations, not engine scaffolding: `_local/` is where a note-taker puts
    large/sensitive originals (PDFs, datasets) too big for git, and `assets/` is
