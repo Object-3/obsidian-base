@@ -83,8 +83,18 @@ if (Test-Path ".obsidian\plugins\obsidian-local-rest-api\main.js") {
 '["obsidian-local-rest-api","obsidian-git"]' | Set-Content ".obsidian\community-plugins.json"
 
 # ---- 5. wire the Obsidian MCP --------------------------------------------
+$ClaudeDesktopMissing = $false   # set when the Claude Desktop app isn't installed
+$ClaudeCodeMissing    = $false   # set when the Claude Code CLI isn't installed
+$AssistantPresent     = $false   # set when at least one assistant is installed
 if ($McpClients -ne "none") {
   if ($McpClients -eq "desktop" -or $McpClients -eq "both") {
+    # The Claude Desktop app itself isn't installed by this script — wire the config
+    # anyway (it activates the moment they install it), but flag it for the final note.
+    if ((Test-Path "$env:LOCALAPPDATA\AnthropicClaude\claude.exe") -or (Test-Path "$env:LOCALAPPDATA\Programs\claude\claude.exe")) {
+      $AssistantPresent = $true
+    } else {
+      $ClaudeDesktopMissing = $true
+    }
     $cfg = "$env:APPDATA\Claude\claude_desktop_config.json"
     New-Item -ItemType Directory -Force -Path (Split-Path $cfg) | Out-Null
     $json = if (Test-Path $cfg) { Get-Content $cfg -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
@@ -95,9 +105,15 @@ if ($McpClients -ne "none") {
     Say "Wiring MCP into Claude Desktop..."
     $json | ConvertTo-Json -Depth 10 | Set-Content $cfg
   }
-  if (($McpClients -eq "code" -or $McpClients -eq "both") -and (Have claude)) {
-    Say "Wiring MCP into Claude Code..."
-    claude mcp add mcp-obsidian --env OBSIDIAN_API_KEY=$ApiKey --env OBSIDIAN_HOST=$ObsidianHost --env OBSIDIAN_PORT=$ObsidianPort -- uvx mcp-obsidian
+  if ($McpClients -eq "code" -or $McpClients -eq "both") {
+    if (Have claude) {
+      $AssistantPresent = $true
+      Say "Wiring MCP into Claude Code..."
+      claude mcp add mcp-obsidian --env OBSIDIAN_API_KEY=$ApiKey --env OBSIDIAN_HOST=$ObsidianHost --env OBSIDIAN_PORT=$ObsidianPort -- uvx mcp-obsidian
+    } else {
+      $ClaudeCodeMissing = $true
+      Warn "Claude Code CLI not found; skipping (install it, then re-run with MCP_CLIENTS=code)."
+    }
   }
 }
 
@@ -107,6 +123,30 @@ try { Start-Process "obsidian://open?path=$([uri]::EscapeDataString($VaultDir))"
 
 Write-Host ""
 Write-Host "Done. Your vault: $VaultDir" -ForegroundColor Green
-Write-Host "Next (one-time, in Obsidian): click 'Trust author and enable plugins' if prompted, then start writing."
+Write-Host ""
+
+# If NO AI assistant is installed, the MCP we just wired has nothing to load into.
+# (If at least one is present we stay quiet — the config is live for it.)
+if (-not $AssistantPresent) {
+  Write-Host "No AI assistant is installed yet." -ForegroundColor Yellow
+  Write-Host "The vault is ready and the connection is pre-wired, but it only activates once the assistant is on this machine:"
+  if ($ClaudeDesktopMissing) { Write-Host "  - Claude Desktop:  https://claude.ai/download" }
+  if ($ClaudeCodeMissing)    { Write-Host "  - Claude Code:     https://claude.com/claude-code" }
+  Write-Host "Install it, then come back to the steps below."
+  Write-Host ""
+}
+
+Write-Host "Next (one-time, in Obsidian):"
+Write-Host "  - Click 'Trust author and enable plugins' if prompted. This switches the Local REST"
+Write-Host "    API on - the bridge your assistant talks to. Until you do this, the assistant"
+Write-Host "    cannot read or write the vault."
+Write-Host ""
+Write-Host "Then connect your assistant to the vault:"
+Write-Host "  - The connection (MCP) was configured during setup, but Claude only loads it when a"
+Write-Host "    session STARTS. So begin a NEW session before it works:"
+Write-Host "      * Claude Desktop: fully quit and reopen the app."
+Write-Host "      * Claude Code:    start a new session (the running one won't see it)."
+Write-Host "  - To confirm, ask your assistant: 'list the files in my vault.'"
+Write-Host ""
 Write-Host "Optional cloud backup later:  cd `"$VaultDir`"; .\setup\connect-github.ps1"
 Write-Host "Pull base updates anytime:    cd `"$VaultDir`"; bash .agents/scripts/update-base.sh"

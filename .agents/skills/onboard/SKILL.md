@@ -51,11 +51,18 @@ Check each; if a check fails, investigate and repair, then re-check:
 - **REST API reachable** (after the human enables plugins): the Local REST API answers
   on `https://127.0.0.1:27124` with the key. If not yet, that's the human's trust click.
 
-## 3. Hand off the two human-only steps
-Tell the user, plainly:
+## 3. Hand off the human-only steps
+First, **is an AI assistant even installed?** The script wires the MCP config but does
+not install Claude itself. If neither `/Applications/Claude.app` (Desktop) nor the
+`claude` CLI (Code) is present, tell the user to install one first — Claude Desktop:
+https://claude.ai/download, Claude Code: https://claude.com/claude-code — then continue.
+
+Then tell the user, plainly:
 1. In Obsidian, click **"Trust author and enable plugins"** if prompted (one time).
-2. **Restart Claude Desktop** so it loads the new MCP server (Claude Code picks it up
-   on next session).
+   This switches on the Local REST API — the bridge the MCP talks to. Until they do
+   this, the assistant cannot read or write the vault.
+2. **Start a new session so the MCP loads:** fully quit and reopen Claude Desktop, or
+   start a fresh Claude Code session (the running one won't see the new server).
 Then confirm the agent can list files in the vault via the Obsidian MCP.
 
 ## 4. Mention the optional next step
