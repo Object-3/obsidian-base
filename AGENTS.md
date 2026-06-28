@@ -117,8 +117,17 @@ This KB is maintained like Karpathy's [LLM Wiki](https://gist.github.com/karpath
    exports), put it in `raw/` (create the folder on demand) and never edit it —
    synthesize into notes so claims stay traceable.
 5. **Lint periodically.** Watch for contradictions, stale claims, orphan notes, and
-   concepts lacking a note. The `stale-knowledge-checker` agent helps.
-6. **Compound.** End a cycle by extracting reusable learnings to `docs/knowledge/`.
+   concepts lacking a note — the `stale-knowledge-checker` agent helps, and
+   `.agents/scripts/lint-vault.sh` flags notes that miss the frontmatter standard.
+6. **Normalize useful notes on contact (ask first).** When you happen to open a note
+   that doesn't meet the frontmatter/structure standard above and you judge it
+   genuinely worth keeping, **offer** to bring it up to standard — don't silently
+   rewrite it, and don't bother for throwaway scratch. On a yes, run the full
+   normalization (frontmatter → `TL;DR … Caveats` structure → ≥2 `[[links]]` +
+   backlinks → `index.md` + `log.md`); the `/normalize-vault` skill does all of it.
+   Never reformat `raw/` (immutable) or `_local/`; if you can't ask (non-interactive
+   run), just flag it rather than changing it.
+7. **Compound.** End a cycle by extracting reusable learnings to `docs/knowledge/`.
 
 ## Skills (portable across agents)
 
