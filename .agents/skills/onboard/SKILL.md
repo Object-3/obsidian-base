@@ -85,6 +85,11 @@ Then confirm the agent can list files in the vault via the Obsidian MCP.
   via the MCP and writes a conformant note (right folder, frontmatter, `index.md` +
   `log.md`). This is the explicit-ask exception to no-MCP-writes. Don't prompt for
   project-only artifacts.
+- **When adding either rule to `~/.claude/CLAUDE.md`, wrap the inserted block** in
+  `<!-- BEGIN obsidian-base vault rules (managed by obsidian-base setup; safe to
+  remove) -->` … `<!-- END obsidian-base vault rules -->` sentinels. This is what lets
+  the **`offboard`** skill (and a careful human) remove exactly our block later
+  without disturbing the rest of the user's global config.
 
 ## Notes
 - **Local-first**: everything works with no GitHub account. `update-base` pulls engine
