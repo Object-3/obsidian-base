@@ -27,6 +27,9 @@ SKIP_PREREQS="${SKIP_PREREQS:-}"             # set=1 to skip installing brew/git
 NO_OPEN="${NO_OPEN:-}"                        # set=1 to not launch Obsidian at the end
 CLAUDE_DESKTOP_CONFIG="${CLAUDE_DESKTOP_CONFIG:-}"   # override Claude Desktop config path (testing)
 ASSUME_YES=""; [ "${1:-}" = "--yes" ] && ASSUME_YES=1
+CLAUDE_DESKTOP_MISSING=""   # set by configure_mcp when the Claude Desktop app isn't installed
+CLAUDE_CODE_MISSING=""      # set by configure_mcp when the Claude Code CLI isn't installed
+ASSISTANT_PRESENT=""        # set by configure_mcp when at least one assistant is installed
 
 say()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m  ! %s\033[0m\n' "$*" >&2; }
@@ -141,6 +144,15 @@ configure_mcp() {
       [ "$PLATFORM" = mac ] && cfg="$HOME/Library/Application Support/Claude/claude_desktop_config.json" \
                             || cfg="$HOME/.config/Claude/claude_desktop_config.json"
     fi
+    # Claude Desktop app itself isn't installed by this script — wire the config
+    # anyway (it activates the moment they install it), but flag it so the final
+    # message tells them to download it.
+    if [ "$PLATFORM" = mac ]; then
+      { [ -d "/Applications/Claude.app" ] || [ -d "$HOME/Applications/Claude.app" ]; } \
+        && ASSISTANT_PRESENT=1 || CLAUDE_DESKTOP_MISSING=1
+    else
+      have claude-desktop && ASSISTANT_PRESENT=1 || CLAUDE_DESKTOP_MISSING=1
+    fi
     mkdir -p "$(dirname "$cfg")"; [ -f "$cfg" ] || echo '{}' > "$cfg"
     say "Wiring MCP into Claude Desktop…"
     jq --arg k "$key" --arg h "$OBSIDIAN_HOST" --arg p "$OBSIDIAN_PORT" '
@@ -151,6 +163,7 @@ configure_mcp() {
   fi
   if [ "$MCP_CLIENTS" = code ] || [ "$MCP_CLIENTS" = both ]; then
     if have claude; then
+      ASSISTANT_PRESENT=1
       say "Wiring MCP into Claude Code…"
       # --scope user → available across ALL the user's projects, not just this
       # directory (default scope is "local"). The vault is a consume-from-anywhere
@@ -159,6 +172,7 @@ configure_mcp() {
         --env OBSIDIAN_PORT="$OBSIDIAN_PORT" -- uvx mcp-obsidian 2>/dev/null \
         || warn "couldn't add MCP to Claude Code (add it manually: see SETUP.md)"
     else
+      CLAUDE_CODE_MISSING=1
       warn "Claude Code CLI not found; skipping (install it, then re-run with MCP_CLIENTS=code)."
     fi
   fi
@@ -179,10 +193,30 @@ configure_mcp
 open_vault
 
 printf '\n\033[1;32m✓ Done.\033[0m Your vault: %s\n\n' "$VAULT_DIR"
+
+# If NO AI assistant is installed, the MCP we just wired has nothing to load into.
+# (If at least one is present we stay quiet — the config is live for it.)
+if [ -z "$ASSISTANT_PRESENT" ]; then
+  printf '\033[1;33mNo AI assistant is installed yet.\033[0m The vault is ready and the\n'
+  printf 'connection is pre-wired, but it only activates once the assistant is on this machine:\n'
+  [ -n "$CLAUDE_DESKTOP_MISSING" ] && printf '  • Claude Desktop:  https://claude.ai/download\n'
+  [ -n "$CLAUDE_CODE_MISSING" ]    && printf '  • Claude Code:     https://claude.com/claude-code\n'
+  printf 'Install it, then come back to the steps below.\n\n'
+fi
+
 cat <<EOF
 Next (one-time, in Obsidian):
   - When Obsidian opens, click "Trust author and enable plugins" if prompted.
-  - That's it: start writing notes. Your agent can read/write the vault via MCP.
+    This is what switches the Local REST API on — the bridge your assistant talks to.
+    Until you do this, the assistant cannot read or write the vault.
+
+Then connect your assistant to the vault:
+  - The connection (MCP) was configured during setup, but Claude only loads it when a
+    session STARTS. So you must begin a NEW session before it works:
+      • Claude Desktop: fully quit and reopen the app.
+      • Claude Code:    start a new session (the running one won't see it).
+  - To confirm it worked, ask your assistant: "list the files in my vault."
+    If it lists them, the handshake is complete.
 
 Optional, whenever you want cloud backup / sync (private repo under your account or an org):
   cd "$VAULT_DIR" && ./setup/connect-github.sh
