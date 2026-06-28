@@ -4,6 +4,18 @@ This turns a brand-new computer into a working, agent-powered knowledge vault �
 **no GitHub account, no setup knowledge needed.** You write notes in
 [Obsidian](https://obsidian.md); your AI assistant can read and write them too.
 
+## 0. Install your AI assistant first
+
+The vault is read and written by an AI assistant, so you need one on this computer.
+The command below **pre-wires the connection**, but it doesn't install the assistant
+itself — grab whichever you'll use first:
+
+- **[Claude Desktop](https://claude.ai/download)** — the easy choice for non-technical use.
+- **[Claude Code](https://claude.com/claude-code)** — if you live in the terminal.
+
+(If you skip this, setup still finishes and tells you what's missing — you can install
+the assistant afterward and it'll connect.)
+
 ## 1. Run one command
 
 **macOS** — open the **Terminal** app, paste this, press Return:
@@ -19,18 +31,31 @@ irm https://raw.githubusercontent.com/Object-3/obsidian-base/main/setup/setup.ps
 ```
 
 It installs everything it needs (Obsidian included), creates your vault on your
-computer, connects your AI assistant, and opens it. It only asks you to **name your
-vault**.
+computer, wires the connection to your AI assistant, and opens it. It only asks you to
+**name your vault**.
 
 ## 2. One click in Obsidian
 
 When Obsidian opens, if it asks, click **“Trust author and enable plugins.”**
-That’s a one-time safety prompt. Then start writing — that’s it.
+That’s a one-time safety prompt — and it’s what switches on the little bridge
+(the Local REST API) your assistant uses to reach the vault. **Until you click it, the
+assistant can’t read or write your notes.** Then start writing — you’re done with Obsidian.
+
+## 3. Start a *new* assistant session to connect it
+
+The connection was set up for you, but your assistant only picks it up when a session
+**starts** — so you have to begin a fresh one:
+
+- **Claude Desktop:** fully quit the app and reopen it.
+- **Claude Code:** start a new session (the one already running won’t see it).
+
+To confirm it worked, ask your assistant: **“list the files in my vault.”** If it lists
+them, you’re connected.
 
 Your vault lives **on your computer** and is yours. Nothing is uploaded anywhere
-unless you choose to in step 3.
+unless you choose to in step 4.
 
-## 3. (Optional) Back up to the cloud — anytime later
+## 4. (Optional) Back up to the cloud — anytime later
 
 Want your notes backed up and synced across devices? From your vault folder, run:
 
