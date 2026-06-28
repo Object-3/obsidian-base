@@ -145,10 +145,12 @@ including ephemeral cloud containers that don't auto-install them.
 
 Two kinds of change flow through this repo, and they use **different paths**:
 
-- **Content** — notes, written by a person in Obsidian *or* by an agent via the
-  Obsidian MCP. These land in the **live vault working tree on `main`** and are
-  synced automatically by Obsidian Git (commit-and-sync + pull-on-start). Nobody
-  runs git by hand. This is the path for all everyday knowledge work.
+- **Content** — notes. When **a person** writes them in Obsidian (or explicitly asks
+  an agent to write through the Obsidian MCP), they land in the **live vault working
+  tree on `main`** and sync automatically via Obsidian Git (commit-and-sync +
+  pull-on-start) — nobody runs git by hand. This is the path for all everyday
+  knowledge work. **Agent-initiated** content edits instead go on a **branch** (see
+  *Vault access* below).
 - **Engine / structural** — the base layer: `AGENTS.md`, scripts, hooks,
   `skill-sources.json`, schema-wide refactors, anything `update-base` owns. Make
   these on a **branch and open a PR**, ideally from a **separate checkout/worktree**,
@@ -157,6 +159,27 @@ Two kinds of change flow through this repo, and they use **different paths**:
 
 Rule of thumb: *if a non-technical note-taker would never touch it, it's an engine
 change → branch + PR.*
+
+### Vault access (Obsidian MCP)
+
+The vault is a **user-owned, portable knowledge base** — reachable even from other
+projects and workflows. How you touch it depends on whether you're *consuming* it or
+*working on* it:
+
+- **Consuming knowledge** — gathering, searching, or pulling vault context into
+  another workflow → use the **Obsidian MCP** when available to read/search the
+  **live vault**. This is the access path when you're *not* working in the vault repo
+  (e.g. a different project in Claude Code that just needs the KB as a source).
+- **Working on the vault** — creating, editing, or restructuring notes, anytime
+  you're in this repo → use **native approaches** (file tools + a branch in a
+  checkout). Don't route edits through the MCP.
+- **Exception:** write to the live vault through the MCP when the **user explicitly
+  asks** you to.
+
+Why: agents that work on the vault stay on a branch, so changes are reviewable and
+Obsidian Git never sweeps a half-applied edit onto `main`; the MCP stays a clean read
+bridge, keeping the knowledge base accessible from anywhere without becoming a back
+door for silent writes.
 
 ## For agents
 
