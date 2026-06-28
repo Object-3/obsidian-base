@@ -60,9 +60,16 @@ Tell the user, plainly:
    on next session).
 Then confirm the agent can list files in the vault via the Obsidian MCP.
 
-## 4. Mention the optional next step
-Cloud backup whenever they want it (under their own account or an org):
-`./setup/connect-github.sh` (or `.ps1`). Not required to use the vault.
+## 4. Mention the optional next steps
+- **Cloud backup** whenever they want it (under their own account or an org):
+  `./setup/connect-github.sh` (or `.ps1`). Not required to use the vault.
+- **Proactive recall from any project** (recommended): with the MCP at `--scope user`,
+  the vault is reachable from every Claude Code session — but the agent won't *consult*
+  it on its own unless told to. Offer to add a short standing rule to their global
+  `~/.claude/CLAUDE.md` so agents proactively search the vault for questions their own
+  notes would inform (past decisions, prior research, project context, preferences),
+  read/search only, fall back gracefully when Obsidian is closed, and never write
+  without an explicit ask. Keep the trigger scoped so it helps without hammering the MCP.
 
 ## Notes
 - **Local-first**: everything works with no GitHub account. `update-base` pulls engine
