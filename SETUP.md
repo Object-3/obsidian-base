@@ -64,6 +64,18 @@ Want your notes backed up and synced across devices? From your vault folder, run
 It signs you into GitHub and creates a **private** repo under **your account** (or a
 company/team **org** you choose). After that it backs up automatically.
 
+## Changed your mind? Disconnect it
+
+To reverse the integration **without touching your notes**, run from your vault folder:
+
+**macOS:** `./setup/uninstall.sh`  **Windows:** `.\setup\uninstall.ps1`
+
+It removes the assistant connection (the Obsidian MCP from Claude Desktop and Claude
+Code) and the vault rules added to your global assistant config. Your vault and notes
+are left exactly where they are — it even prints the location. Add `--remove-plugins`
+(macOS/Linux) or `-RemovePlugins` (Windows) to also remove the Obsidian plugins. To
+re-enable later, just run `setup` again. (Or ask your assistant to "disconnect my vault.")
+
 ## Keeping up to date
 
 To pull the latest shared improvements (new skills, fixes) into your vault:
