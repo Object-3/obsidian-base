@@ -46,7 +46,9 @@ Check each; if a check fails, investigate and repair, then re-check:
 - **MCP wired**: the key in `.obsidian/.rest-api-key` matches `OBSIDIAN_API_KEY` in the
   Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`
   on macOS, `%APPDATA%\Claude\claude_desktop_config.json` on Windows) and/or
-  `claude mcp list` shows `mcp-obsidian`. Fix the config if missing.
+  `claude mcp list` shows `mcp-obsidian`. Fix the config if missing — when re-adding
+  to Claude Code, use `claude mcp add mcp-obsidian --scope user …` so the vault is
+  reachable from every project, not just the setup directory.
 - **MCP runtime**: `uvx mcp-obsidian` is resolvable (uv installed). If not, install uv.
 - **REST API reachable** (after the human enables plugins): the Local REST API answers
   on `https://127.0.0.1:27124` with the key. If not yet, that's the human's trust click.
@@ -65,13 +67,40 @@ Then tell the user, plainly:
    start a fresh Claude Code session (the running one won't see the new server).
 Then confirm the agent can list files in the vault via the Obsidian MCP.
 
-## 4. Mention the optional next step
-Cloud backup whenever they want it (under their own account or an org):
-`./setup/connect-github.sh` (or `.ps1`). Not required to use the vault.
+## 4. Mention the optional next steps
+- **Cloud backup** whenever they want it (under their own account or an org):
+  `./setup/connect-github.sh` (or `.ps1`). Not required to use the vault.
+- **Proactive recall from any project** (recommended): with the MCP at `--scope user`,
+  the vault is reachable from every Claude Code session — but the agent won't *consult*
+  it on its own unless told to. Offer to add a short standing rule to their global
+  `~/.claude/CLAUDE.md` so agents proactively search the vault for questions their own
+  notes would inform (past decisions, prior research, project context, preferences),
+  read/search only, fall back gracefully when Obsidian is closed, and never write
+  without an explicit ask. Keep the trigger scoped so it helps without hammering the MCP.
+- **Capture knowledge back to the vault** (recommended, pairs with the above): also
+  offer a standing global rule so that when work in *another* project produces a
+  durable, reusable artifact (e.g. from `kw-compound`/`kw-plan`, `ce-compound`, or a
+  research/decision/playbook write-up) with value beyond that one repo, the agent
+  **asks** whether to add it to the vault — then, on yes, reads the vault's conventions
+  via the MCP and writes a conformant note (right folder, frontmatter, `index.md` +
+  `log.md`). This is the explicit-ask exception to no-MCP-writes. Don't prompt for
+  project-only artifacts.
+- **When adding either rule to `~/.claude/CLAUDE.md`, wrap the inserted block** in
+  `<!-- BEGIN obsidian-base vault rules (managed by obsidian-base setup; safe to
+  remove) -->` … `<!-- END obsidian-base vault rules -->` sentinels. This is what lets
+  the **`offboard`** skill (and a careful human) remove exactly our block later
+  without disturbing the rest of the user's global config.
 
 ## Notes
 - **Local-first**: everything works with no GitHub account. `update-base` pulls engine
   updates from the public base remote without auth.
+- **Don't make non-technical users think in repos.** Their mental model is simply
+  *"I write in Obsidian; my agents can read it and, with my OK, add to it."* Obsidian
+  Git syncs underneath; the MCP is how agents reach in. Never tell them to `cd` into a
+  checkout or work "out of the repo" — the two standing rules above (recall + capture)
+  give them the agent-side behavior without exposing the mechanism. (Technical users
+  who want branch/PR discipline can still work directly in the vault checkout for
+  intentional KB work; that's their choice, not a requirement.)
 - Re-running the script is safe (idempotent). When stuck, prefer reading the script and
   running its steps one at a time over guessing.
 - This skill is hand-authored and repo-local (not vendored); `sync-skills.sh` won't

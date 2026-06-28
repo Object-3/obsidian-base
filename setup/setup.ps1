@@ -109,7 +109,10 @@ if ($McpClients -ne "none") {
     if (Have claude) {
       $AssistantPresent = $true
       Say "Wiring MCP into Claude Code..."
-      claude mcp add mcp-obsidian --env OBSIDIAN_API_KEY=$ApiKey --env OBSIDIAN_HOST=$ObsidianHost --env OBSIDIAN_PORT=$ObsidianPort -- uvx mcp-obsidian
+      # --scope user → available across ALL the user's projects, not just this
+      # directory (default scope is "local"). The vault is a consume-from-anywhere
+      # knowledge base, so the MCP must be reachable from every Claude Code session.
+      claude mcp add mcp-obsidian --scope user --env OBSIDIAN_API_KEY=$ApiKey --env OBSIDIAN_HOST=$ObsidianHost --env OBSIDIAN_PORT=$ObsidianPort -- uvx mcp-obsidian
     } else {
       $ClaudeCodeMissing = $true
       Warn "Claude Code CLI not found; skipping (install it, then re-run with MCP_CLIENTS=code)."

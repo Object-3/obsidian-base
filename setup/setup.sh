@@ -165,7 +165,10 @@ configure_mcp() {
     if have claude; then
       ASSISTANT_PRESENT=1
       say "Wiring MCP into Claude Code…"
-      claude mcp add mcp-obsidian --env OBSIDIAN_API_KEY="$key" --env OBSIDIAN_HOST="$OBSIDIAN_HOST" \
+      # --scope user → available across ALL the user's projects, not just this
+      # directory (default scope is "local"). The vault is a consume-from-anywhere
+      # knowledge base, so the MCP must be reachable from every Claude Code session.
+      claude mcp add mcp-obsidian --scope user --env OBSIDIAN_API_KEY="$key" --env OBSIDIAN_HOST="$OBSIDIAN_HOST" \
         --env OBSIDIAN_PORT="$OBSIDIAN_PORT" -- uvx mcp-obsidian 2>/dev/null \
         || warn "couldn't add MCP to Claude Code (add it manually: see SETUP.md)"
     else
