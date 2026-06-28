@@ -2,8 +2,10 @@
 # One-time onboarding for a vault created from obsidian-base-vault.
 # Fills {{PLACEHOLDERS}} in the per-vault files (.agents/vault-profile.md, index.md,
 # llms.txt, log.md, README.md) with your vault's name, tagline, purpose, and primary
-# tag — then offers to run the skill sync. AGENTS.md is base-owned and untouched.
-# Fast and idempotent (re-running only replaces remaining placeholders).
+# tag — clears the base's own example notes (flagged `base_seed: true`), then offers
+# to run the skill sync. AGENTS.md is base-owned and untouched.
+# Fast and idempotent (re-running only replaces remaining placeholders; the clear step
+# only ever removes flagged base notes, never your own).
 #
 # Non-interactive:
 #   VAULT_NAME="My KB" VAULT_TAGLINE="..." VAULT_PURPOSE="..." PRIMARY_TAG=mykb \
@@ -54,6 +56,18 @@ sub "{{PRIMARY_TAG}}"   "$PRIMARY_TAG"
 
 echo
 echo "Profile set: name='$VAULT_NAME'  tag='$PRIMARY_TAG'  (see .agents/vault-profile.md)"
+
+# Clear the base's own example notes (flagged `base_seed: true` in frontmatter). They
+# document how the base itself was built — useful in the base repo, noise in a fork.
+# Only flagged notes are ever removed, so YOUR notes are always safe, even on a re-run.
+seeds=0
+while IFS= read -r f; do
+  [ -n "$f" ] || continue
+  rm -f "$f" && seeds=$((seeds+1))
+done < <(grep -rl --include='*.md' --exclude-dir='.*' -E '^base_seed:[[:space:]]*true' . 2>/dev/null || true)
+if [ "$seeds" -gt 0 ]; then
+  echo "Cleared $seeds base example note(s); docs/knowledge/ now fills with YOUR learnings as you work."
+fi
 
 run="${1:-}"
 if [ "$run" != "--yes" ] && [ -t 0 ]; then

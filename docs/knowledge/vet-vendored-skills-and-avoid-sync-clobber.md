@@ -1,5 +1,6 @@
 ---
 type: correction
+base_seed: true
 tags: [skills, vendoring, gotcha, sync, customization, hardcoded-paths, matt-pocock]
 confidence: high
 created: 2026-06-27
