@@ -81,7 +81,7 @@ If a similar learning already exists:
 
 After identifying what to save, launch the stale knowledge checker:
 
-Launch Task agent: `compound-knowledge:research:stale-knowledge-checker`
+Launch Task agent: `stale-knowledge-checker`
 - Pass: the new learning(s) being saved
 - Returns: existing entries that may be contradicted or superseded
 

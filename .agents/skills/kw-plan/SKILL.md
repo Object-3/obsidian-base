@@ -52,11 +52,11 @@ Launch research agents in parallel. Each returns structured findings — they do
 
 <parallel_tasks>
 
-**2a. Past work** — Launch Task agent: `compound-knowledge:research:past-work-researcher`
+**2a. Past work** — Launch Task agent: `past-work-researcher`
 - Pass: the plan request description + work type from Step 1
 - Returns: related plans, prior decisions, origin brainstorm documents
 
-**2b. Knowledge base** — Launch Task agent: `compound-knowledge:research:knowledge-base-researcher`
+**2b. Knowledge base** — Launch Task agent: `knowledge-base-researcher`
 - Pass: the plan request description + keywords
 - Returns: saved learnings from docs/knowledge/ (insights, corrections, playbooks, patterns)
 

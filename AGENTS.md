@@ -47,45 +47,60 @@ related:                                 # optional, list of links
 
 ## Directory map (where things live)
 
-| Path | What | Who reads/writes it |
+Like a fresh Obsidian vault, the base prescribes **no topical organization** — you get
+the root and make whatever folders you like. The paths below aren't imposed filing;
+each is either the **navigation backbone**, **workflow scaffolding** the agents create
+as they need it, or a **mechanism** you never manage by hand. Anything not listed is
+yours to organize freely — see the **Topical folders** convention below for how folders
+grow in as the vault expands.
+
+| Path | What | Kind |
 |---|---|---|
-| Vault root + topical folders | The notes (the KB itself) | humans + any agent |
-| `index.md` | Catalog of every note (link + one-line summary), the navigation backbone | read first; update on every note add/change |
-| `log.md` | Append-only record of ingests/changes | append an entry per working session |
-| `raw/` | **Immutable** source material (clippings, transcripts, exports) | read-only — never edit a raw source |
-| `assets/` | Small images embedded in notes (diagrams, screenshots); tracked in git | Obsidian (default attachment folder) |
-| `_local/` | **Gitignored** large/sensitive originals (PDFs, big images, datasets) — stay on this machine | local agents + Obsidian; never committed |
+| Vault root + folders you create | The notes (the KB itself) — organize however you like | yours |
+| `index.md` | Catalog of every note (link + one-line summary), the navigation backbone | backbone |
+| `log.md` | Append-only record of ingests/changes | backbone |
+| `assets/` | Where Obsidian drops pasted/embedded images, keeping them out of your note area. Auto-managed — you never touch it. | mechanism |
+| `_local/` | **Gitignored** escape hatch for files too big or sensitive for git (PDFs, datasets, private originals). The pre-commit size guard points here. | mechanism |
+| `raw/` | *Convention, created on demand:* immutable source material (clippings, transcripts, exports) you synthesize from and never edit | convention |
 | `docs/knowledge/` | Compounded learnings (the compounding loop) | `kw-compound` writes; `knowledge-base-researcher` + `stale-knowledge-checker` read |
 | `docs/solutions/` | Solved-problem / pattern write-ups | `past-work-researcher` reads |
 | `plans/` | In-progress plans & brainstorms | `kw-plan` / `kw-work` write; `past-work-researcher` reads |
-| `.agents/` | **Agent home (agnostic):** `vault-profile.md`, `skills/`, `agents/`, `scripts/` | all agents |
-| `.claude/`, `.codex/` | Tool-specific config; `skills`/`agents` here are pointers to `.agents/` | Claude Code / Codex |
-| `.obsidian/` | Obsidian config | Obsidian |
+| `.agents/` | **Agent home (agnostic):** `vault-profile.md`, `skills/`, `agents/`, `scripts/` | engine |
+| `.claude/`, `.codex/` | Tool-specific config; `skills`/`agents` here are pointers to `.agents/` | engine |
+| `.obsidian/` | Obsidian config | engine |
 
 **Folders beginning with a dot (`.agents`, `.claude`, `.codex`, `.obsidian`) are
 ignored by Obsidian** — so skills, agents, and config never pollute the knowledge
 graph, search, or tag index. Keep all skill/agent machinery under dot-folders.
 
+**Topical folders (optional, grow-into).** Notes live in the vault root until a
+single topic accumulates more than ~5–8 notes; then promote that topic to a
+**single-level, lowercase, topic-named** folder (e.g. `private-equity/`,
+`marketing/`). Folders are **coarse buckets only** — `tags`, `[[links]]`, and
+`index.md` stay the primary organizing axes (a note lives in exactly one folder but
+can carry many tags). Don't pre-create empty folders; promote at the threshold. Keep
+folders one level deep.
+
 ## Large files & external sources
 
-The repo holds **markdown** (the notes). Large or binary or sensitive originals —
-PDFs, big images, datasets, exports — **do not belong in git** (GitHub caps files at
-100MB, bloats permanently on binaries, and Obsidian Git auto-commits everything). A
-pre-commit size guard blocks files over ~25MB.
+The repo holds **markdown** (the notes). Large, binary, or sensitive originals —
+PDFs, big images, datasets, exports — **don't belong in git** (GitHub caps files at
+100MB and bloats permanently on binaries, and Obsidian Git auto-commits everything).
 
-Instead, keep the *bytes* outside git and a small **reference note** in the vault
-(in git) that captures the distilled knowledge plus a pointer to the original — the
-same idea as `raw/`, but for things too big or private to commit:
+You don't have to police this by hand. A **pre-commit size guard** blocks anything
+over ~25MB and tells you what to do, and the fix it points to is the gitignored
+**`_local/`** folder: drop the file there and it stays on your machine, never reaching
+GitHub, while Obsidian and local agents can still read/embed it. For files you need on
+other devices or want to share, put them in **Google Drive** (or similar) and link to
+them; agents read them via the Google Drive MCP.
 
-- **Local & private** → drop the file in `_local/` (gitignored; stays on this
-  machine). Obsidian and local agents can still read/embed it.
-- **Shared, large, or needed on other devices** → put it in **Google Drive** (or
-  similar) and link to it; agents read it via the Google Drive MCP.
-- **Small images that are genuinely part of a note** (a diagram) → fine in git;
-  they go in `assets/` (the default attachment folder).
+When a `_local/` (or Drive) file matters to the knowledge, it's worth leaving a small
+**reference note** in the vault — what the file is, a few key points, and where the
+original lives — so the KB "knows about" it without storing the bytes. (Same idea as
+keeping immutable sources in `raw/`, just for things too big or private to commit.)
 
-A reference note should record: what the file is, a short summary / key points, where
-the original lives (the `_local/` path or the Drive link), and the usual frontmatter.
+Small images that are genuinely part of a note are fine in git — Obsidian drops them
+in `assets/` automatically.
 
 ## Operating rules (LLM-Wiki pattern, after Karpathy)
 
@@ -98,7 +113,9 @@ This KB is maintained like Karpathy's [LLM Wiki](https://gist.github.com/karpath
 3. **Link generously, bidirectionally.** `[[wikilinks]]` for internal references,
    standard Markdown links for external. Every note links to ≥2 others; add the
    backlink on the other side.
-4. **Raw is immutable.** Synthesize from `raw/`; never edit a source.
+4. **Sources are immutable.** When you keep source material (clippings, transcripts,
+   exports), put it in `raw/` (create the folder on demand) and never edit it —
+   synthesize into notes so claims stay traceable.
 5. **Lint periodically.** Watch for contradictions, stale claims, orphan notes, and
    concepts lacking a note. The `stale-knowledge-checker` agent helps.
 6. **Compound.** End a cycle by extracting reusable learnings to `docs/knowledge/`.
@@ -145,7 +162,8 @@ change → branch + PR.*
 
 - Navigate by frontmatter (`type`/`status`/`tags`) and `related` links; start from
   `index.md`. Read `.agents/vault-profile.md` for this vault's specifics.
-- New notes go in the vault root (or a topical subfolder), always with frontmatter
-  and `tags` including the vault's primary tag.
+- New notes go in the vault root (or a topical subfolder — see **Topical folders**
+  under the Directory map), always with frontmatter and `tags` including the vault's
+  primary tag.
 - This is a knowledge base, not a codebase: the deliverable is well-sourced,
   decisive, cross-linked Markdown.

@@ -15,5 +15,5 @@ lint passes. Newest at the bottom. Prefix entries with `## [YYYY-MM-DD] <type> |
 ## [2026-06-27] init | Vault created from obsidian-base-vault template
 - Agnostic agent layer in place: `AGENTS.md` contract, `.agents/skills` (vendored,
   with `.claude`/`.codex` pointers), Karpathy LLM-Wiki backbone (`index.md`, this
-  `log.md`, `raw/`).
+  `log.md`).
 - Next: run `.agents/scripts/init-vault.sh` to customize, then start adding notes.

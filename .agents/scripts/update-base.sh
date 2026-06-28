@@ -10,13 +10,16 @@
 # What it refreshes (base-owned engine only):
 #   AGENTS.md, CLAUDE.md, .gitignore, .gitattributes, .agents/SKILLS.md,
 #   .agents/skill-sources.json, .agents/scripts/*, .claude/hooks/*, .claude/settings.json,
-#   .githooks/*, setup/*, SETUP.md, and the base-AUTHORED skills
-#   .agents/skills/{update-base,setup-vault,onboard}
+#   .githooks/*, setup/*, SETUP.md, the base-AUTHORED skills
+#   .agents/skills/{update-base,setup-vault,onboard}, and the one base-owned Obsidian
+#   snippet .obsidian/snippets/hide-engine-files.css
 #
 # What it NEVER touches (yours):
 #   your notes, .agents/vault-profile.md, .agents/skill-sources.local.json, the VENDORED
 #   skills/agents (those come via sync-skills), your own hand-authored skills, index.md,
-#   log.md, llms.txt, README.md, docs/, plans/, raw/, .obsidian/
+#   log.md, llms.txt, README.md, docs/, plans/, raw/, and all of .obsidian/ EXCEPT the
+#   single base-owned snippet above (your own snippets, workspace, graph, appearance,
+#   and which snippets you've enabled all stay yours)
 #
 # Config (override via env, or pin persistently in .agents/.base-ref):
 #   BASE_REPO=Object-3/obsidian-base                  # owner/name (GitHub shorthand)
@@ -50,6 +53,11 @@ PATHS=(
   ".agents/skills/onboard"
   "setup"
   "SETUP.md"
+  # The one base-owned Obsidian snippet: the rule for which engine files to hide from
+  # the explorer is engine, not content, so it stays in sync. Targeted at the exact
+  # FILE (not .obsidian/snippets/) so your own snippets and the rest of .obsidian/ are
+  # left untouched. A vault that wants extra hides adds a separate *.local.css snippet.
+  ".obsidian/snippets/hide-engine-files.css"
 )
 
 # Wire up / refresh the `base` remote, then fetch just the wanted ref (shallow).

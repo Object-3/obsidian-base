@@ -1,5 +1,6 @@
 ---
 type: playbook
+base_seed: true
 tags: [agents, agnostic, agents-md, claude-md, skills, codex, openai, symlink, windows, portability]
 confidence: high
 created: 2026-06-27
