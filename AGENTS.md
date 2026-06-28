@@ -51,7 +51,8 @@ Like a fresh Obsidian vault, the base prescribes **no topical organization** —
 the root and make whatever folders you like. The paths below aren't imposed filing;
 each is either the **navigation backbone**, **workflow scaffolding** the agents create
 as they need it, or a **mechanism** you never manage by hand. Anything not listed is
-yours to organize freely.
+yours to organize freely — see the **Topical folders** convention below for how folders
+grow in as the vault expands.
 
 | Path | What | Kind |
 |---|---|---|

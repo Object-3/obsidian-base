@@ -1,5 +1,6 @@
 ---
 type: playbook
+base_seed: true
 tags: [skills, cloud, claude-code, codex, agents, vendoring, portability, web-sessions]
 confidence: high
 created: 2026-06-27

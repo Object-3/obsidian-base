@@ -17,20 +17,9 @@
   display: none !important;
 }
 
-/* Agent back-office folders: `docs/` (compounded knowledge + solved-problem write-ups)
-   and `plans/` (in-progress plans & brainstorms) are agent-maintained, not where a
-   note-taker writes — so they clutter the sidebar. They stay fully present on disk, in
-   git, searchable, and readable by every agent (this hides explorer rows only). Use
-   `.nav-folder-title` for folders (the file rows above use `.nav-file-title`); no
-   trailing slash in `data-path`. (`raw/` is intentionally left visible — it's
-   human-relevant source material.) */
-.nav-folder-title[data-path="docs"],
-.nav-folder-title[data-path="plans"] {
-  display: none !important;
-}
-
-/* NOTE: `_local/` and `assets/` are intentionally NOT hidden. They are content
-   file-drop locations, not engine scaffolding: `_local/` is where a note-taker puts
-   large/sensitive originals (PDFs, datasets) too big for git, and `assets/` is
-   Obsidian's default attachment folder. Non-technical users must be able to see and
-   access them freely — hiding them would defeat their purpose. */
+/* NOTE: only the root engine/meta FILES above are hidden — every content and workflow
+   FOLDER stays visible in the explorer on purpose. `docs/` (compounded learnings) is
+   the visible payoff of the compounding loop: watching `docs/knowledge/` grow as you
+   work is a feature, not clutter. `plans/`, `raw/`, `_local/`, and `assets/` also stay
+   shown — the last two are content file-drop locations a note-taker needs to reach
+   (large/sensitive originals too big for git; Obsidian's default attachment folder). */
