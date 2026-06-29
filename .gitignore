@@ -25,6 +25,12 @@ _local/*
 !_local/.gitkeep
 !_local/README.md
 
+# Belt-and-suspenders for the _local/ convention: any note suffixed *.private.md is
+# NEVER tracked, wherever it sits in the vault — so a sensitive note stays out of git
+# even outside _local/. (Obsidian still indexes it; git ignores it.) Pairs with the
+# pre-commit confidential guard and the /ingest-pdf workflow.
+**/*.private.md
+
 # --- Agent skill sync (regenerated each run; not the source of truth) ---
 .agents/.skills-last-sync
 
