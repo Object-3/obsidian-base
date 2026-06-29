@@ -108,10 +108,17 @@ mirror_user_scope() {
   # owned = the set we installed/refreshed this run (skipped-as-yours names are NOT recorded).
   local owned_now; owned_now="$(printf '%s\n' "${installed[@]:-}" | jq -R . | jq -s 'map(select(. != "")) | unique')"
   mkdir -p "$(dirname "$MIRROR_MANIFEST")" 2>/dev/null || true
-  jq -n --argjson owned "$owned_now" --arg hash "$lock_hash" --arg vault "$ROOT" \
+  # Atomic write (temp + mv): a failed/partial write must never truncate the existing
+  # manifest — a corrupt manifest reads back as empty, which would make every skill look
+  # like the user's own and silently stop refreshes.
+  if jq -n --argjson owned "$owned_now" --arg hash "$lock_hash" --arg vault "$ROOT" \
         --arg when "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
         '{owned:$owned, lock_hash:$hash, vault_path:$vault, written:$when}' \
-        > "$MIRROR_MANIFEST" 2>/dev/null || echo "   ! could not write manifest $MIRROR_MANIFEST" >&2
+        > "$MIRROR_MANIFEST.tmp.$$" 2>/dev/null; then
+    mv "$MIRROR_MANIFEST.tmp.$$" "$MIRROR_MANIFEST" 2>/dev/null || echo "   ! could not write manifest $MIRROR_MANIFEST" >&2
+  else
+    rm -f "$MIRROR_MANIFEST.tmp.$$" 2>/dev/null; echo "   ! could not write manifest $MIRROR_MANIFEST" >&2
+  fi
   echo "   mirrored $(jq 'length' <<<"$owned_now") skill(s) into user-scope (manifest: $MIRROR_MANIFEST)"
 }
 

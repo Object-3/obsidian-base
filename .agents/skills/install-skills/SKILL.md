@@ -50,7 +50,7 @@ When the user asks "are my global skills current?", compare the manifest's recor
 content hash against the vault's current lock, and flag a cross-vault writer:
 
 ```bash
-MAN="${XDG_CONFIG_HOME:-$HOME/.config}/obsidian-base/skill-mirror.json"
+MAN="${MIRROR_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/obsidian-base/skill-mirror.json}"
 [ -f "$MAN" ] || { echo "Not installed yet (no manifest at $MAN)."; exit 0; }
 hash() { jq -S '.skills | sort' .agents/skill-sources.lock.json | { command -v sha256sum >/dev/null 2>&1 && sha256sum || shasum -a 256; } | cut -d' ' -f1; }
 CUR="$(hash)"; HAVE="$(jq -r .lock_hash "$MAN")"; WROTE="$(jq -r .vault_path "$MAN")"; N="$(jq -r '.owned|length' "$MAN")"
