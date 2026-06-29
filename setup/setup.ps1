@@ -10,13 +10,14 @@
 #   irm https://raw.githubusercontent.com/Object-3/obsidian-base/main/setup/setup.ps1 | iex
 #
 # Idempotent. Override defaults with env vars (BASE_REPO_URL, VAULT_PARENT,
-# VAULT_NAME, MCP_CLIENTS=desktop|code|both|none).
+# VAULT_NAME, MCP_CLIENTS=desktop|code|both|none, MIRROR_SKILLS=ask|yes|no).
 $ErrorActionPreference = "Stop"
 
 $BaseRepoUrl = $env:BASE_REPO_URL; if (-not $BaseRepoUrl) { $BaseRepoUrl = "https://github.com/Object-3/obsidian-base.git" }
 $VaultParent = $env:VAULT_PARENT; if (-not $VaultParent) { $VaultParent = "$HOME\Documents" }
 $VaultName   = $env:VAULT_NAME
 $McpClients  = $env:MCP_CLIENTS;  if (-not $McpClients)  { $McpClients = "both" }
+$MirrorSkills = $env:MIRROR_SKILLS; if (-not $MirrorSkills) { $MirrorSkills = "ask" }
 $ObsidianHost = "127.0.0.1"; $ObsidianPort = "27124"
 
 function Say($m)  { Write-Host "==> $m" -ForegroundColor Cyan }
@@ -61,6 +62,24 @@ if ($bash) {
   & $bash ".agents/scripts/init-vault.sh" "--yes"
 } else {
   Warn "Git Bash not found; run .agents/scripts/init-vault.sh manually (it needs bash/jq)."
+}
+
+# ---- 3b. (optional) mirror skills into user-scope ------------------------
+# Opt-in: also install the vendored portable skills into the user's CLI tools so
+# they work in EVERY project, not just this vault. Uses --mirror-only (no network
+# re-fetch). Never enabled silently.
+$SkillsMirrored = $false
+if ($bash) {
+  $choice = $MirrorSkills
+  if ($choice -eq "ask") {
+    $ans = Read-Host "Make these skills available in ALL your projects, not just this vault? [y/N]"
+    if ($ans -match '^[Yy]') { $choice = "yes" } else { $choice = "no" }
+  }
+  if ($choice -eq "yes") {
+    Say "Installing skills into your user-scope (~/.claude/skills, ~/.agents/skills)..."
+    try { & $bash ".agents/scripts/sync-skills.sh" "--mirror-only"; $SkillsMirrored = $true }
+    catch { Warn "skill mirror failed - run the /install-skills skill later." }
+  }
 }
 
 # ---- 4. provision Obsidian plugins + REST API key ------------------------
@@ -127,6 +146,12 @@ try { Start-Process "obsidian://open?path=$([uri]::EscapeDataString($VaultDir))"
 Write-Host ""
 Write-Host "Done. Your vault: $VaultDir" -ForegroundColor Green
 Write-Host ""
+
+if ($SkillsMirrored) {
+  Write-Host "Skills installed to your user-scope - they now work in every project, not just this vault." -ForegroundColor Green
+  Write-Host "Manage them with the /install-skills skill; they stay even if you later offboard."
+  Write-Host ""
+}
 
 # If NO AI assistant is installed, the MCP we just wired has nothing to load into.
 # (If at least one is present we stay quiet — the config is live for it.)
