@@ -139,6 +139,13 @@ configure_mcp() {
   [ -n "$key" ] || { warn "no REST API key; skipping MCP wiring"; return; }
 
   if [ "$MCP_CLIENTS" = desktop ] || [ "$MCP_CLIENTS" = both ]; then
+    # Resolve uvx to an ABSOLUTE path for the Desktop config. Claude Desktop
+    # launches MCP servers on macOS with a stripped PATH (/usr/bin:/bin:/usr/sbin:
+    # /sbin) and doesn't source the shell, so a bare "uvx" (installed under
+    # ~/.local/bin or Homebrew) isn't found and the server silently never starts.
+    # The Claude Code branch below stays bare — Code inherits the shell PATH.
+    local uvx_bin; uvx_bin="$(command -v uvx 2>/dev/null || echo uvx)"
+    [ "$uvx_bin" = uvx ] && warn "uvx not resolvable; Desktop MCP config will use bare 'uvx' and may not start until uvx is on PATH."
     local cfg="$CLAUDE_DESKTOP_CONFIG"
     if [ -z "$cfg" ]; then
       [ "$PLATFORM" = mac ] && cfg="$HOME/Library/Application Support/Claude/claude_desktop_config.json" \
@@ -155,9 +162,9 @@ configure_mcp() {
     fi
     mkdir -p "$(dirname "$cfg")"; [ -f "$cfg" ] || echo '{}' > "$cfg"
     say "Wiring MCP into Claude Desktop…"
-    jq --arg k "$key" --arg h "$OBSIDIAN_HOST" --arg p "$OBSIDIAN_PORT" '
+    jq --arg k "$key" --arg h "$OBSIDIAN_HOST" --arg p "$OBSIDIAN_PORT" --arg uvx "$uvx_bin" '
       .mcpServers = (.mcpServers // {}) |
-      .mcpServers["mcp-obsidian"] = {command:"uvx", args:["mcp-obsidian"],
+      .mcpServers["mcp-obsidian"] = {command:$uvx, args:["mcp-obsidian"],
         env:{OBSIDIAN_API_KEY:$k, OBSIDIAN_HOST:$h, OBSIDIAN_PORT:$p}}' \
       "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg"
   fi
