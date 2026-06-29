@@ -12,6 +12,10 @@
 # never deleted by this script; it prints the vault location if you want to
 # remove it yourself.
 #
+# It also NEVER removes skills you installed into your tools' user-scope
+# (~/.claude\skills, ~/.agents\skills) - once installed those are yours. This
+# script only informs you they remain.
+#
 # Optional flag:
 #   -RemovePlugins   also remove the Local REST API + Git plugins and the REST
 #                    API key from the vault's .obsidian\ (reversible - re-run
@@ -91,6 +95,21 @@ if ($RemovePlugins) {
   } else {
     Warn "Couldn't locate a vault (run inside it or set VAULT_DIR). Skipping plugin removal."
   }
+}
+
+# ---- 5. user-scope skills: INFORM, never remove --------------------------
+# The portable skills you installed into your tools' user-scope are YOURS - left
+# in place. We only tell you they remain (removal is your manual choice).
+$man = $env:MIRROR_MANIFEST; if (-not $man) { $man = Join-Path $HOME ".config\obsidian-base\skill-mirror.json" }
+if (Test-Path $man) {
+  try {
+    $n = (Get-Content $man -Raw | ConvertFrom-Json).owned.Count
+    if ($n -gt 0) {
+      Say "$n skill(s) you installed into user-scope are KEPT - offboarding never removes them."
+      Write-Host "    They stay in ~/.claude\skills and ~/.agents\skills, yours to use anywhere."
+      Write-Host "    To remove them yourself: delete those skill dirs and $man"
+    }
+  } catch {}
 }
 
 $vloc = $VaultDir
