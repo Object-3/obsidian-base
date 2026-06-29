@@ -4,7 +4,7 @@ type:    index
 status:  active
 tags:    [{{PRIMARY_TAG}}, log]
 created: 2026-06-27
-updated: 2026-06-27
+updated: 2026-06-29
 ---
 
 # Log
@@ -17,3 +17,10 @@ lint passes. Newest at the bottom. Prefix entries with `## [YYYY-MM-DD] <type> |
   with `.claude`/`.codex` pointers), Karpathy LLM-Wiki backbone (`index.md`, this
   `log.md`).
 - Next: run `.agents/scripts/init-vault.sh` to customize, then start adding notes.
+
+## [2026-06-29] feat | User-scope skill mirror (engine)
+- Added an opt-in mirror of the vendored portable skills into user-scope
+  (`~/.claude/skills`, `~/.agents/skills`) so they work in every project, not just the
+  vault. Surfaces: `sync-skills.sh --user-scope`/`--mirror-only`, the `/install-skills`
+  skill, onboarding opt-in (`MIRROR_SKILLS`), offboard retain-and-inform, `update-base`
+  propagation + refresh nudge. Vendoring + cloud path unchanged. See [[userscope-skill-mirror]].

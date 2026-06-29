@@ -4,7 +4,7 @@ type:    index
 status:  active
 tags:    [{{PRIMARY_TAG}}, index]
 created: 2026-06-27
-updated: 2026-06-27
+updated: 2026-06-29
 ---
 
 # Index
@@ -31,3 +31,4 @@ background for anyone building on it):
 - [[vendor-skills-into-repo-for-cloud-sessions]] — `playbook` · why skills are vendored into the repo.
 - [[llm-agnostic-agent-repo-layout]] — `playbook` · AGENTS.md + SKILL.md are open standards; `.agents/` canonical + tool pointers.
 - [[vet-vendored-skills-and-avoid-sync-clobber]] — `correction` · vet skills for hardcoded paths; hand-author repo-aware skills outside the sync.
+- [[userscope-skill-mirror]] — `playbook` · mirror portable skills into user-scope so they work in every project (additive to vendoring; survives offboard).

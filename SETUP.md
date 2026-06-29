@@ -64,6 +64,14 @@ Want your notes backed up and synced across devices? From your vault folder, run
 It signs you into GitHub and creates a **private** repo under **your account** (or a
 company/team **org** you choose). After that it backs up automatically.
 
+## Use these skills everywhere (optional)
+
+During setup you're asked whether to make the vault's skills available in **all** your
+projects, not just this vault. Say yes and they're installed for your assistant
+machine-wide. You can change your mind anytime — just ask your assistant to
+**"install my skills everywhere"** (or *"are my global skills up to date?"*). These
+skills stay even if you later disconnect the vault — they're yours.
+
 ## Changed your mind? Disconnect it
 
 To reverse the integration **without touching your notes**, run from your vault folder:
