@@ -102,6 +102,36 @@ keeping immutable sources in `raw/`, just for things too big or private to commi
 Small images that are genuinely part of a note are fine in git — Obsidian drops them
 in `assets/` automatically.
 
+## Confidential & third-party material (what goes where)
+
+Some material can't go in git **at all** — NDA-bound documents, third-party financials
+or personal/client records, a counterparty's confidential decks. The governing line is
+the usual NDA one: **no disclosure to a third party** — and a synced git host *is* a third
+party (a private repo can be made public, shared, or reached by integrations). Sort it into
+three buckets — **Shareable → Sensitive → Original**, in rising order of sensitivity:
+
+- **Shareable** → the tracked vault. Strategy-level synthesis with **no**
+  third-party-confidential detail. For third-party material, **de-identify** (no name,
+  owner, or verbatim figures/records); often there's no per-document Shareable note at all.
+- **Sensitive** → `_local/` (gitignored, but still a first-class Obsidian note
+  locally). The candid / number-heavy synthesis. When you're on a branch, write these
+  **through the Obsidian MCP into the live vault** — git can't carry `_local/`, but the
+  MCP lands them where they're indexed and gitignored. Tag `classification:
+  confidential-local-only`.
+- **Original** → Google Drive (shareable / automatable) or `_local/`. Never committed.
+
+**Keep links intact across planes** with one rule: *links point up the sensitivity
+gradient (shareable → sensitive → original) freely; references down are optional, labeled,
+and never load-bearing.* A Shareable note's `related:` lists only other Shareable notes
+(always resolves); Sensitive notes and Originals link up to Shareable; the one downward
+pointer is a labeled callout that reads as intentional when the local note is absent.
+Catalog Sensitive notes in a gitignored **`_local/_index.md`** (the local-plane counterpart
+to `index.md`); keep `index.md` / `log.md` de-identified.
+
+Two machine backstops so this doesn't depend on memory: **`**/*.private.md`** is
+gitignored everywhere, and the **pre-commit guard** blocks committing a `classification:
+confidential…` note outside `_local/`. The **`/ingest-pdf`** skill runs this whole workflow.
+
 ## Operating rules (LLM-Wiki pattern, after Karpathy)
 
 This KB is maintained like Karpathy's [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f):
