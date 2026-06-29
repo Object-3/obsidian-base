@@ -30,6 +30,24 @@ STAMP="$ROOT/.agents/.skills-last-sync"
 INDEX="$CANON_SKILLS/INDEX.md"
 LOCKDIR="$ROOT/.agents/.sync-skills.lock"   # concurrency guard (mkdir-based, portable)
 
+# ---- user-scope mirror (opt-in) ------------------------------------------
+# Mirroring also copies the vendored PORTABLE skills into each CLI tool's
+# USER-SCOPE dir, so they resolve in every project on this machine — not just
+# this vault. Strictly additive: the in-repo vendoring below is untouched, and
+# cloud/web sessions (which only see the repo checkout) are unaffected.
+# Enable with --user-scope, --mirror-only (mirror without re-fetching), or
+# MIRROR_USER_SCOPE=1. The *_USER_SKILLS / MIRROR_MANIFEST vars are overridable
+# (handy for tests; point them at a temp dir to avoid touching real ~/.).
+CLAUDE_USER_SKILLS="${CLAUDE_USER_SKILLS:-$HOME/.claude/skills}"   # Claude Code (also Desktop Code tab + Conductor via shared $HOME)
+CODEX_USER_SKILLS="${CODEX_USER_SKILLS:-$HOME/.agents/skills}"     # OpenAI Codex native user-scope
+MIRROR_MANIFEST="${MIRROR_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/obsidian-base/skill-mirror.json}"
+USER_SCOPE=""; MIRROR_ONLY=""
+for _arg in "$@"; do case "$_arg" in
+  --user-scope)  USER_SCOPE=1 ;;
+  --mirror-only) USER_SCOPE=1; MIRROR_ONLY=1 ;;
+esac; done
+[ -n "${MIRROR_USER_SCOPE:-}" ] && USER_SCOPE=1
+
 # tool pointer dirs -> what they point at (relative target | canonical abs)
 POINTERS=(
   ".claude/skills|../.agents/skills|$CANON_SKILLS"
@@ -38,6 +56,70 @@ POINTERS=(
 )
 
 command -v jq   >/dev/null || { echo "jq is required"   >&2; exit 1; }
+
+# Mirror the vendored PORTABLE set (the lock's .skills[]) into each CLI tool's
+# user-scope dir. Non-destructive: a same-named skill we did NOT install is never
+# overwritten. Ours-only: refresh touches only names in our manifest. Reads the set
+# from the lock (authoritative, == the hand-authored-excluding vendored set), so it
+# also works standalone via --mirror-only. set -e is locally disabled around the
+# $HOME writes so a permission/space failure logs and is skipped without aborting the
+# (already-completed) repo sync. The manifest records a content hash of the sorted
+# skill set (drift signal) and the writing vault's path (cross-vault diagnostic).
+mirror_user_scope() {
+  [ -f "$LOCK" ] || { echo "   ! no lock at $LOCK; nothing to mirror" >&2; return 0; }
+  local hasher
+  if   command -v sha256sum >/dev/null 2>&1; then hasher="sha256sum"
+  elif command -v shasum    >/dev/null 2>&1; then hasher="shasum -a 256"
+  else echo "   ! no sha256sum/shasum; skipping user-scope mirror" >&2; return 0; fi
+
+  local lock_hash owned_json
+  lock_hash="$(jq -S '.skills | sort' "$LOCK" | $hasher | cut -d' ' -f1)"
+  owned_json="[]"; [ -f "$MIRROR_MANIFEST" ] && owned_json="$(jq -c '.owned // []' "$MIRROR_MANIFEST" 2>/dev/null || echo '[]')"
+
+  echo ">> user-scope mirror"
+  echo "   targets: $CLAUDE_USER_SKILLS , $CODEX_USER_SKILLS"
+  local installed=() name owned dest stage did_any collision
+  set +e   # a $HOME write failure must not abort the already-finished repo sync
+  while IFS= read -r name; do
+    [ -n "$name" ] && [ -d "$CANON_SKILLS/$name" ] || continue
+    owned=0; [ "$(jq -r --arg n "$name" 'index($n) != null' <<<"$owned_json" 2>/dev/null)" = "true" ] && owned=1
+    # Non-destructive: if a skill of this name exists in ANY target and we don't own
+    # it, it's yours — leave it untouched in EVERY target (consistent name-level
+    # ownership, so a later refresh never clobbers a skill you installed yourself).
+    if [ "$owned" -eq 0 ]; then
+      collision=0
+      for dest in "$CLAUDE_USER_SKILLS" "$CODEX_USER_SKILLS"; do [ -e "$dest/$name" ] && collision=1; done
+      [ "$collision" -eq 1 ] && { echo "   skip (your own): $name"; continue; }
+    fi
+    did_any=0
+    for dest in "$CLAUDE_USER_SKILLS" "$CODEX_USER_SKILLS"; do
+      mkdir -p "$dest" 2>/dev/null || { echo "   ! cannot create $dest; skipping" >&2; continue; }
+      stage="$dest/.$name.tmp.$$"; rm -rf "$stage" 2>/dev/null
+      if cp -R "$CANON_SKILLS/$name" "$stage" 2>/dev/null && rm -rf "$dest/$name" 2>/dev/null && mv "$stage" "$dest/$name" 2>/dev/null; then
+        did_any=1
+      else
+        rm -rf "$stage" 2>/dev/null; echo "   ! failed to write $dest/$name" >&2
+      fi
+    done
+    [ "$did_any" -eq 1 ] && installed+=("$name")
+  done < <(jq -r '.skills[]?' "$LOCK")
+  set -e
+
+  # owned = the set we installed/refreshed this run (skipped-as-yours names are NOT recorded).
+  local owned_now; owned_now="$(printf '%s\n' "${installed[@]:-}" | jq -R . | jq -s 'map(select(. != "")) | unique')"
+  mkdir -p "$(dirname "$MIRROR_MANIFEST")" 2>/dev/null || true
+  jq -n --argjson owned "$owned_now" --arg hash "$lock_hash" --arg vault "$ROOT" \
+        --arg when "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        '{owned:$owned, lock_hash:$hash, vault_path:$vault, written:$when}' \
+        > "$MIRROR_MANIFEST" 2>/dev/null || echo "   ! could not write manifest $MIRROR_MANIFEST" >&2
+  echo "   mirrored $(jq 'length' <<<"$owned_now") skill(s) into user-scope (manifest: $MIRROR_MANIFEST)"
+}
+
+# --mirror-only: refresh the user-scope mirror from the repo's CURRENT vendored set
+# (the committed lock) WITHOUT re-fetching upstream — fast, offline, no concurrency
+# guard needed. This is the path /install-skills uses for a local refresh.
+if [ -n "$MIRROR_ONLY" ]; then mirror_user_scope; exit 0; fi
+
 command -v curl >/dev/null || { echo "curl is required" >&2; exit 1; }
 [ -f "$MANIFEST" ] || [ -f "$LOCAL_MANIFEST" ] || { echo "no skill-sources.json or skill-sources.local.json found" >&2; exit 1; }
 
@@ -260,5 +342,10 @@ jq -n \
   --argjson a "$(to_json_array "${VAGENTS[@]:-}")" \
   '{skills: $s, agents: $a}' > "$LOCK"
 date -u +"%Y-%m-%dT%H:%M:%SZ" > "$STAMP"
+
+# 5) Opt-in: also mirror the portable set into user-scope. Runs LAST so the lock it
+#    reads is fresh. Default runs (incl. the SessionStart hook, which passes no flags)
+#    skip this entirely — user-scope is only ever written on explicit --user-scope.
+[ -n "$USER_SCOPE" ] && mirror_user_scope
 
 echo "synced ${#VSKILLS[@]} skills, ${#VAGENTS[@]} agents (canonical: .agents/)"
