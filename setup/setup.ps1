@@ -114,12 +114,16 @@ if ($McpClients -ne "none") {
     } else {
       $ClaudeDesktopMissing = $true
     }
+    # Resolve uvx to an absolute path for the Desktop config, mirroring setup.sh.
+    # GUI-launched MCP servers may not inherit the user PATH, so a bare "uvx" can
+    # fail to start. (Lower risk on Windows than macOS, but kept consistent.)
+    $uvxBin = (Get-Command uvx -ErrorAction SilentlyContinue).Source; if (-not $uvxBin) { $uvxBin = "uvx" }
     $cfg = "$env:APPDATA\Claude\claude_desktop_config.json"
     New-Item -ItemType Directory -Force -Path (Split-Path $cfg) | Out-Null
     $json = if (Test-Path $cfg) { Get-Content $cfg -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
     if (-not $json.mcpServers) { $json | Add-Member mcpServers ([pscustomobject]@{}) -Force }
     $json.mcpServers | Add-Member "mcp-obsidian" ([pscustomobject]@{
-      command="uvx"; args=@("mcp-obsidian");
+      command=$uvxBin; args=@("mcp-obsidian");
       env=[pscustomobject]@{ OBSIDIAN_API_KEY=$ApiKey; OBSIDIAN_HOST=$ObsidianHost; OBSIDIAN_PORT=$ObsidianPort } }) -Force
     Say "Wiring MCP into Claude Desktop..."
     $json | ConvertTo-Json -Depth 10 | Set-Content $cfg

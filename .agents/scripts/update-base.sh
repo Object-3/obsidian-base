@@ -11,7 +11,7 @@
 #   AGENTS.md, CLAUDE.md, .gitignore, .gitattributes, .agents/SKILLS.md,
 #   .agents/skill-sources.json, .agents/scripts/*, .claude/hooks/*, .claude/settings.json,
 #   .githooks/*, setup/*, SETUP.md, the base-AUTHORED skills
-#   .agents/skills/{update-base,setup-vault,onboard,offboard,normalize-vault,install-skills},
+#   .agents/skills/{update-base,setup-vault,onboard,offboard,normalize-vault,install-skills,ingest-pdf},
 #   and the one base-owned Obsidian snippet .obsidian/snippets/hide-engine-files.css
 #
 # What it NEVER touches (yours):
@@ -54,6 +54,7 @@ PATHS=(
   ".agents/skills/offboard"
   ".agents/skills/normalize-vault"
   ".agents/skills/install-skills"
+  ".agents/skills/ingest-pdf"
   "setup"
   "SETUP.md"
   # The one base-owned Obsidian snippet: the rule for which engine files to hide from
