@@ -19,8 +19,8 @@ rising order of sensitivity — and route it accordingly:
 | Bucket | What | Home | In git? |
 |---|---|---|---|
 | **Shareable** | Strategy / synthesis with **no** third-party-confidential detail | vault (tracked) | yes |
-| **Sensitive** | Synthesis that must stay private (third-party-confidential detail, candid reads) but needs to be a linked Obsidian note locally | `_local/` (gitignored) | no |
-| **Original** | The raw bytes (PDF, deck, xlsx) | Google Drive (shareable / automatable) or `_local/` | no |
+| **Sensitive** | Synthesis that must stay private (third-party-confidential detail, candid reads) but needs to be a linked Obsidian note locally | `_sensitive/` (gitignored) | no |
+| **Original** | The raw bytes (PDF, deck, xlsx) | Google Drive (shareable / automatable) or `_sensitive/` | no |
 
 The governing line for confidential material is usually **"no disclosure to a third
 party"** — and a synced git host *is* a third party. If there's an NDA, **read it first**;
@@ -38,12 +38,12 @@ its terms set the sorting.
 
 3. **Extract the text.** PDFs need a real extractor — the Obsidian MCP can't read them and
    the Read tool needs poppler. Prefer `pdftotext -layout "<in>" "<out>"` (install once:
-   `brew install poppler`). Extract to **gitignored scratch** (`.context/` or `_local/`),
+   `brew install poppler`). Extract to **gitignored scratch** (`.context/` or `_sensitive/`),
    never the tracked tree. For chart/image pages, render with poppler + read as an image.
 
 4. **Park the original.** Move the raw file to Google Drive (shareable with
-   collaborators, reachable by agents) or `_local/`. **Never commit the original** — the
-   size guard and `_local/*` gitignore are backstops, not the plan.
+   collaborators, reachable by agents) or `_sensitive/`. **Never commit the original** — the
+   size guard and `_sensitive/*` gitignore are backstops, not the plan.
 
 5. **Write the notes, by bucket:**
    - **Shareable → tracked vault note** — full frontmatter (incl. the primary tag),
@@ -51,9 +51,9 @@ its terms set the sorting.
      verbatim figures/records — only generalizable, non-identifying synthesis. Often there is *no*
      per-document shareable note for a confidential third party; a small reference note that just
      says what/where the original is can be enough.
-   - **Sensitive → `_local/<name>.md`.** When you're working on a branch, write these
+   - **Sensitive → `_sensitive/<name>.md`.** When you're working on a branch, write these
      **through the Obsidian MCP into the live vault** (`obsidian_append_content`) — git can't
-     carry `_local/`, but the MCP lands the note in the *running* vault where it's indexed and
+     carry `_sensitive/`, but the MCP lands the note in the *running* vault where it's indexed and
      gitignored. Add `classification: confidential-local-only` + `availability: local-only`.
 
 6. **Keep links working across both planes — one rule:**
@@ -68,12 +68,12 @@ its terms set the sorting.
 7. **Maintain both backbones.**
    - **Git:** add a catalog entry to `index.md` *only if there's a shareable note*, and a
      **de-identified** `log.md` entry — never the confidential identity or figures/records.
-   - **Local:** catalog Sensitive notes in a gitignored **`_local/_index.md`** — the local-plane
+   - **Local:** catalog Sensitive notes in a gitignored **`_sensitive/_index.md`** — the local-plane
      counterpart to `index.md`.
 
 8. **Verify the boundary held.** Before finishing, prove nothing leaked:
-   `git grep -i -e "<party name>" -e "<owner>" -- . ':!_local'` must return nothing in tracked
-   files. Confirm Sensitive notes are in the live vault's `_local/` and **absent** from the tracked tree.
+   `git grep -i -e "<party name>" -e "<owner>" -- . ':!_sensitive' ':!_local'` must return nothing in tracked
+   files. Confirm Sensitive notes are in the live vault's `_sensitive/` and **absent** from the tracked tree.
 
 9. **Compound.** Extract reusable learnings to `docs/knowledge/` (`/kw-compound`).
 
@@ -83,8 +83,8 @@ Two backstops this base ships, so a stray sensitive note can't leak:
 - **`**/*.private.md`** is gitignored everywhere — name a stray sensitive note `*.private.md`
   and it stays out of git wherever it sits (Obsidian still indexes it).
 - The **pre-commit guard** (`.githooks/pre-commit`) blocks committing a note whose frontmatter is
-  `classification: confidential…` outside `_local/`. Obsidian Git's bundled git may skip native
-  hooks, so the durable rule is still "sensitive → `_local/` or `*.private.md`."
+  `classification: confidential…` outside `_sensitive/`. Obsidian Git's bundled git may skip native
+  hooks, so the durable rule is still "sensitive → `_sensitive/` or `*.private.md`."
 
 ## What NOT to do
 
@@ -92,8 +92,8 @@ Two backstops this base ships, so a stray sensitive note can't leak:
   `index.md` / `log.md`, and not even in a "private" repo.
 - Don't `![[embed]]` a Sensitive note or Original from a Shareable note (it dangles when the file is absent).
 - Don't route Shareable writes through the MCP onto `main` when the task wants a reviewable branch/PR —
-  write those natively on the branch; use the MCP for the `_local/` plane.
-- Don't reformat `raw/` or `_local/` originals.
+  write those natively on the branch; use the MCP for the `_sensitive/` plane.
+- Don't reformat `raw/` or `_sensitive/` originals.
 
 ## Notes
 
@@ -101,3 +101,6 @@ Two backstops this base ships, so a stray sensitive note can't leak:
   `update-base` propagates it to downstream vaults (it's listed in update-base's overlay paths).
 - Pairs with the *Confidential & third-party material (what goes where)* section of `AGENTS.md`
   and the *Vault access (Obsidian MCP)* rules.
+- The `_sensitive/` plane this writes to is single-machine + unbacked by default. To make it
+  durable and multi-device (confidentially), run **`/setup-sensitive-plane`** — it backs
+  `_sensitive/` with an org-tenant cloud-synced folder and never touches git.

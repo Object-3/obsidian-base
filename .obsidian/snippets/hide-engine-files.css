@@ -28,6 +28,6 @@
    every content and workflow FOLDER stays visible in the explorer on purpose. `docs/`
    (compounded learnings) is the visible payoff of the compounding loop: watching
    `docs/knowledge/` grow as you work is a feature, not clutter. `plans/`, `raw/`,
-   `_local/`, and `assets/` also stay shown — the last two are content file-drop
-   locations a note-taker needs to reach (large/sensitive originals too big for git;
-   Obsidian's default attachment folder). */
+   `_sensitive/`, and `assets/` also stay shown — the last two are content file-drop
+   locations a note-taker needs to reach (confidential notes / large originals kept off
+   git; Obsidian's default attachment folder). */

@@ -54,6 +54,7 @@ PATHS=(
   ".agents/skills/offboard"
   ".agents/skills/normalize-vault"
   ".agents/skills/ingest-pdf"
+  ".agents/skills/setup-sensitive-plane"
   "setup"
   "SETUP.md"
   # The one base-owned Obsidian snippet: the rule for which engine files to hide from

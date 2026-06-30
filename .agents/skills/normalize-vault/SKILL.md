@@ -1,6 +1,6 @@
 ---
 name: normalize-vault
-description: Bring an existing Obsidian-vault note up to this knowledge base's frontmatter + structure standard (the AGENTS.md contract), on the user's go-ahead. Use this whenever you open or are handed a vault note that isn't conformant — missing or partial YAML frontmatter, no TL;DR-to-Caveats structure, no [[links]], or missing the vault's primary tag — and it's worth keeping, or when the user says "normalize this note", "format this to our standard", "clean up this note", "make this fit the knowledge base", "add frontmatter", or "standardize these notes", or when AGENTS.md's normalize-on-contact rule fires and the user agrees. Also runs a deliberate whole-vault sweep (via lint-vault.sh) on request. Scope is structural/metadata conformance of existing vault notes — not authoring new notes, not prose/copy editing, and not docs/knowledge, docs/solutions, or plans/ (those carry their own schema). Never touches raw/ or _local/.
+description: Bring an existing Obsidian-vault note up to this knowledge base's frontmatter + structure standard (the AGENTS.md contract), on the user's go-ahead. Use this whenever you open or are handed a vault note that isn't conformant — missing or partial YAML frontmatter, no TL;DR-to-Caveats structure, no [[links]], or missing the vault's primary tag — and it's worth keeping, or when the user says "normalize this note", "format this to our standard", "clean up this note", "make this fit the knowledge base", "add frontmatter", or "standardize these notes", or when AGENTS.md's normalize-on-contact rule fires and the user agrees. Also runs a deliberate whole-vault sweep (via lint-vault.sh) on request. Scope is structural/metadata conformance of existing vault notes — not authoring new notes, not prose/copy editing, and not docs/knowledge, docs/solutions, or plans/ (those carry their own schema). Never touches raw/ or _sensitive/ (or legacy _local/).
 ---
 
 # Normalize a note to the vault standard
@@ -65,7 +65,7 @@ mass-rewrite, and don't bother normalizing throwaway scratch that isn't worth ke
 ## What NOT to touch
 
 - `raw/` — immutable source material; synthesize from it, never reformat it.
-- `_local/`, `assets/`, and dot-folders (`.agents`, `.claude`, `.codex`, `.obsidian`).
+- `_sensitive/` (and legacy `_local/`), `assets/`, and dot-folders (`.agents`, `.claude`, `.codex`, `.obsidian`).
 - Engine / meta markdown: `AGENTS.md`, `CLAUDE.md`, `README.md`, `SETUP.md`, `llms.txt`.
 - `docs/knowledge/`, `docs/solutions/`, `plans/` — these carry their **own**
   frontmatter schema maintained by the `kw-*` skills; don't force the note schema onto

@@ -2,15 +2,15 @@
 # Pre-commit guards for a knowledge-base vault:
 #   1. Size guard — block large files (GitHub rejects >100MB; binaries bloat history).
 #   2. Confidential guard — block notes marked `classification: confidential` (or
-#      `availability: local-only`) outside `_local/`, so sensitive / third-party material
-#      never reaches a synced git host.
-# Large/sensitive originals (PDFs, images, datasets) belong in the gitignored `_local/`
+#      `availability: local-only`) outside `_sensitive/`, so sensitive / third-party
+#      material never reaches a synced git host.
+# Large/sensitive originals (PDFs, images, datasets) belong in the gitignored `_sensitive/`
 # folder or external storage (e.g. Google Drive) with a small reference note — NOT the repo.
 #
 # Enable once with:  git config core.hooksPath .githooks   (init-vault.sh does this).
 #
 # NOTE: the Obsidian Git plugin may use a bundled JS git that skips native hooks. If
-# so, this won't fire on auto-commits — the durable rule is "big files go in _local/".
+# so, this won't fire on auto-commits — the durable rule is "big files go in _sensitive/".
 # When it DOES fire (CLI / agent commits, or Obsidian Git using system git), it shows
 # a clear error instead of silently bloating the repo.
 set -euo pipefail
@@ -28,18 +28,18 @@ done < <(git diff --cached --name-only --diff-filter=AM -z)
 if [ -n "$big" ]; then
   echo "✋ commit blocked — file(s) over 25MB would enter git history:" >&2
   printf '%s' "$big" >&2
-  echo "Move large/sensitive originals to the gitignored '_local/' folder (or Google" >&2
+  echo "Move large/sensitive originals to the gitignored '_sensitive/' folder (or Google" >&2
   echo "Drive) and keep a small markdown reference note instead. See AGENTS.md." >&2
   echo "To override for one commit (rarely needed): git commit --no-verify" >&2
   exit 1
 fi
 
 # 2. Confidential guard: a note whose YAML frontmatter is `classification: confidential…`
-# or `availability: local-only` must live in the gitignored `_local/` plane (or be named
+# or `availability: local-only` must live in the gitignored `_sensitive/` plane (or be named
 # *.private.md), never in tracked git. Scans only the frontmatter of staged markdown.
 conf=""
 while IFS= read -r -d '' file; do
-  case "$file" in _local/*) continue ;; esac   # _local/ is already gitignored
+  case "$file" in _sensitive/*|_local/*) continue ;; esac   # both gitignored (current + legacy)
   case "$file" in *.md) ;; *) continue ;; esac
   [ -f "$file" ] || continue
   if awk 'NR==1 && $0!="---"{exit 1} NR>1 && /^---[[:space:]]*$/{exit} NR>1{print}' "$file" 2>/dev/null \
@@ -49,10 +49,10 @@ while IFS= read -r -d '' file; do
 done < <(git diff --cached --name-only --diff-filter=AM -z)
 
 if [ -n "$conf" ]; then
-  echo "✋ commit blocked — confidential note(s) staged outside _local/:" >&2
+  echo "✋ commit blocked — confidential note(s) staged outside _sensitive/:" >&2
   printf '%s' "$conf" >&2
   echo "Notes marked 'classification: confidential…' / 'availability: local-only' must live" >&2
-  echo "in the gitignored _local/ folder (or be named *.private.md), never in tracked git." >&2
+  echo "in the gitignored _sensitive/ folder (or be named *.private.md), never in tracked git." >&2
   echo "Move them, or override for one commit (rarely needed): git commit --no-verify" >&2
   exit 1
 fi
