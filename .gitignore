@@ -37,6 +37,9 @@ _local/*
 # Local-only agent settings (per-machine overrides, may hold secrets)
 .claude/settings.local.json
 
+# Playwright MCP runtime/cache
+/.playwright-mcp/
+
 # --- macOS / OS cruft ---
 .DS_Store
 .AppleDouble
