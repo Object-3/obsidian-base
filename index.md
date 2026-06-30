@@ -32,4 +32,4 @@ background for anyone building on it):
 - [[llm-agnostic-agent-repo-layout]] — `playbook` · AGENTS.md + SKILL.md are open standards; `.agents/` canonical + tool pointers.
 - [[vet-vendored-skills-and-avoid-sync-clobber]] — `correction` · vet skills for hardcoded paths; hand-author repo-aware skills outside the sync.
 - [[userscope-skill-mirror]] — `playbook` · mirror portable skills into user-scope so they work in every project (additive to vendoring; survives offboard).
-- [[kw-and-ce-knowledge-planes]] — `decision-record` · `kw-*` → `docs/knowledge`+`plans` (the KB); `ce-*` → `docs/solutions`, repo-scoped; vault disables the `compound-knowledge` plugin — invoke `/kw-compound`.
+- [[kw-and-ce-knowledge-planes]] — `decision-record` · `kw-*` → `docs/knowledge`+`plans` (the KB); `ce-*` → `docs/solutions`, repo-scoped; vault disables the `compound-knowledge` plugin — invoke `/kw:compound` (EveryInc's literal name).

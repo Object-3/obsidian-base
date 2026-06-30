@@ -35,9 +35,12 @@ not code problems.
 - **CE is repo-scoped by construction.** `ce-*` skills write **relative to the working
   directory**, so even installed *globally* their output lands in whatever code repo you
   run them in — exactly where engineering work belongs. No symlinking needed.
-- **One invocation for `kw-*`.** Vault **vendors** them (committed `kw-*`, dash form) and
-  **disables the `compound-knowledge` plugin** so the same skills aren't also loaded under
-  a `compound-knowledge:` / `kw:` namespace. Invoke `/kw-compound`, not `/kw:compound`.
+- **One copy, EveryInc's name.** Vault **vendors** the `kw-*` skills verbatim from EveryInc
+  and **disables the `compound-knowledge` plugin** so the same skill isn't loaded twice. Their
+  folder is `kw-compound` but the registered `name:` is `kw:compound` (colon — EveryInc's
+  literal naming, kept as-is, not forked to dash), so the invocation is **`/kw:compound`**. They
+  delegate to flat-named agents (`past-work-researcher`, …) vendored in `.agents/agents/`, so
+  they resolve without the plugin.
 
 ## Why disable the plugin instead of un-vendoring
 

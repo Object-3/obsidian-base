@@ -196,11 +196,13 @@ keep them apart so nothing collides and every agent knows where to look:
   run them in* — engineering learnings correctly land in that code repo, not here.
   **Don't run CE knowledge-writing skills inside the vault:** they'd scatter a second,
   schema-incompatible store that pollutes the Obsidian graph and fails `lint-vault.sh`.
-- **One invocation per skill.** The vault **vendors** the `kw-*` skills (committed under
-  `.agents/skills/`) and **disables the `compound-knowledge` plugin** (`.claude/settings.json`)
-  so they aren't *also* loaded under a `compound-knowledge:` / `kw:` namespace. Invoke the
-  dash form — `/kw-compound`, not `/kw:compound`. Relying on the vendored copies (not the
-  plugin) is also what keeps the skills working in cloud/web sessions.
+- **One copy, EveryInc's name.** The `kw-*` skills are vendored verbatim from EveryInc's
+  `compound-knowledge` plugin. Their registered `name:` is `kw:compound` (the colon is
+  EveryInc's; the folder is `kw-compound`) — invoke the **upstream name, `/kw:compound`**, and
+  don't fork it to dash. They're committed under `.agents/skills/` for cloud sessions, and the
+  vault **disables the `compound-knowledge` plugin** (`.claude/settings.json`) so the same skill
+  isn't loaded twice; the skills delegate to flat-named agents vendored in `.agents/agents/`, so
+  they resolve without it.
 
 ## Working in this vault: content vs engine
 
