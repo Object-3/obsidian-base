@@ -8,6 +8,7 @@ source: /kw-compound after making the vault usable by any agent (Claude primary)
 related:
   - "[[vendor-skills-into-repo-for-cloud-sessions]]"
   - "[[vet-vendored-skills-and-avoid-sync-clobber]]"
+  - "[[userscope-skill-mirror]]"
 ---
 
 # LLM-agnostic agent-repo layout (Claude primary, any agent supported)

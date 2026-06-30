@@ -21,6 +21,7 @@ BASE_REPO_URL="${BASE_REPO_URL:-https://github.com/Object-3/obsidian-base.git}"
 VAULT_PARENT="${VAULT_PARENT:-$HOME/Documents}"
 VAULT_NAME="${VAULT_NAME:-}"                 # prompted if empty
 MCP_CLIENTS="${MCP_CLIENTS:-both}"           # desktop | code | both | none
+MIRROR_SKILLS="${MIRROR_SKILLS:-ask}"        # ask | yes | no — also install skills into user-scope (~/.claude, ~/.agents) so they work in EVERY project
 OBSIDIAN_HOST="${OBSIDIAN_HOST:-127.0.0.1}"
 OBSIDIAN_PORT="${OBSIDIAN_PORT:-27124}"
 SKIP_PREREQS="${SKIP_PREREQS:-}"             # set=1 to skip installing brew/git/jq/uv/Obsidian
@@ -30,6 +31,7 @@ ASSUME_YES=""; [ "${1:-}" = "--yes" ] && ASSUME_YES=1
 CLAUDE_DESKTOP_MISSING=""   # set by configure_mcp when the Claude Desktop app isn't installed
 CLAUDE_CODE_MISSING=""      # set by configure_mcp when the Claude Code CLI isn't installed
 ASSISTANT_PRESENT=""        # set by configure_mcp when at least one assistant is installed
+SKILLS_MIRRORED=""          # set by configure_skill_mirror when the user-scope mirror ran
 
 say()  { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m  ! %s\033[0m\n' "$*" >&2; }
@@ -101,6 +103,28 @@ configure_vault() {
   else
     .agents/scripts/init-vault.sh || warn "init-vault skipped (run it later)"
   fi
+}
+
+# ---- 3b. (optional) mirror skills into user-scope ------------------------
+# Opt-in: also install the vendored portable skills into the user's CLI tools so
+# they work in EVERY project, not just this vault. Additive and reversible; never
+# enabled silently. Uses --mirror-only (no network re-fetch — the committed set is
+# already current in a fresh clone).
+configure_skill_mirror() {
+  cd "$VAULT_DIR"
+  local choice="$MIRROR_SKILLS"
+  if [ "$choice" = ask ]; then
+    if [ -n "$ASSUME_YES" ] || [ ! -t 0 ]; then
+      choice=no   # opt-in: never enable non-interactively unless MIRROR_SKILLS=yes was set explicitly
+    else
+      local ans=""; read -r -p "Make these skills available in ALL your projects, not just this vault? [y/N]: " ans || true
+      case "$ans" in [Yy]*) choice=yes ;; *) choice=no ;; esac
+    fi
+  fi
+  [ "$choice" = yes ] || { say "Skills stay scoped to this vault (run the /install-skills skill anytime to change that)."; return; }
+  say "Installing skills into your user-scope (~/.claude/skills, ~/.agents/skills)…"
+  if .agents/scripts/sync-skills.sh --mirror-only; then SKILLS_MIRRORED=1
+  else warn "skill mirror failed — you can run it later with the /install-skills skill."; fi
 }
 
 # ---- 4. provision Obsidian plugins + REST API key ------------------------
@@ -195,11 +219,19 @@ open_vault() {
 install_prereqs
 create_vault
 configure_vault
+configure_skill_mirror
 provision_plugins
 configure_mcp
 open_vault
 
 printf '\n\033[1;32m✓ Done.\033[0m Your vault: %s\n\n' "$VAULT_DIR"
+
+# If the user opted into the mirror, tell them their skills are now machine-wide.
+if [ -n "$SKILLS_MIRRORED" ]; then
+  printf '\033[1;32m✓ Skills installed to your user-scope.\033[0m They now work in every project on this\n'
+  printf 'machine, not just this vault. Manage them anytime with the /install-skills skill;\n'
+  printf 'they stay even if you later offboard the vault.\n\n'
+fi
 
 # If NO AI assistant is installed, the MCP we just wired has nothing to load into.
 # (If at least one is present we stay quiet — the config is live for it.)

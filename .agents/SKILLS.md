@@ -103,6 +103,33 @@ Collisions never error — the highest-precedence one silently wins.
 To suppress a vendored skill locally, add `skillOverrides` in
 `.claude/settings.local.json`: `{ "skillOverrides": { "kw-plan": "off" } }`.
 
+## User-scope mirror (skills in every project)
+
+Vendoring scopes skills to **this vault**. To also use the portable skills in
+**other projects** on your machine, **mirror** them into each tool's user-scope —
+this is **additive**, the in-repo vendored copy (what cloud/web sessions need) is
+untouched.
+
+- **Enable / refresh:** the **`/install-skills`** skill, or at onboarding
+  (`MIRROR_SKILLS=yes`). Under the hood: `sync-skills.sh --user-scope` (re-fetch +
+  mirror) or `--mirror-only` (mirror the committed lock, offline).
+- **Targets:** `~/.claude/skills` (Claude Code, the Claude Desktop **Code tab**, and
+  Conductor via shared `$HOME`) and `~/.agents/skills` (Codex's native user-scope).
+  Only the **lock-tracked portable set** is mirrored — the hand-authored vault-engine
+  skills (everything *not* in the lock) are never installed globally.
+- **Safe + reversible-but-retained:** a manifest
+  (`${XDG_CONFIG_HOME:-~/.config}/obsidian-base/skill-mirror.json`) makes it
+  non-destructive (your own same-named skills are never overwritten) and refreshes
+  ours-only. Offboarding **keeps** these skills — they're yours.
+- **Caveat:** personal scope shadows project scope locally (precedence
+  `personal > project`); across multiple vaults the mirror is last-writer-wins, which
+  the `/install-skills` status check (`sync-skills.sh --status`) flags via the manifest's
+  recorded source hash + vault path.
+- **Not for chat surfaces:** claude.ai chat takes skills only as a manual zip upload;
+  ChatGPT has none. The mirror targets the scriptable CLI tools only.
+
+See [`docs/knowledge/userscope-skill-mirror.md`](../docs/knowledge/userscope-skill-mirror.md).
+
 ## Discovery
 
 `.agents/skills/INDEX.md` is auto-generated on every sync from each skill's

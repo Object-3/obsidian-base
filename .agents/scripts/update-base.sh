@@ -11,8 +11,8 @@
 #   AGENTS.md, CLAUDE.md, .gitignore, .gitattributes, .agents/SKILLS.md,
 #   .agents/skill-sources.json, .agents/scripts/*, .claude/hooks/*, .claude/settings.json,
 #   .githooks/*, setup/*, SETUP.md, the base-AUTHORED skills
-#   .agents/skills/{update-base,setup-vault,onboard,offboard,normalize-vault}, and the
-#   one base-owned Obsidian snippet .obsidian/snippets/hide-engine-files.css
+#   .agents/skills/{update-base,setup-vault,onboard,offboard,normalize-vault,install-skills,ingest-pdf,setup-sensitive-plane},
+#   and the one base-owned Obsidian snippet .obsidian/snippets/hide-engine-files.css
 #
 # What it NEVER touches (yours):
 #   your notes, .agents/vault-profile.md, .agents/skill-sources.local.json, the VENDORED
@@ -53,6 +53,7 @@ PATHS=(
   ".agents/skills/onboard"
   ".agents/skills/offboard"
   ".agents/skills/normalize-vault"
+  ".agents/skills/install-skills"
   ".agents/skills/ingest-pdf"
   ".agents/skills/setup-sensitive-plane"
   "setup"
@@ -112,4 +113,13 @@ else
   echo "  2. This is an ENGINE change — commit on a branch and open a PR (don't let the"
   echo "     live auto-syncing vault sweep a half-applied engine update onto main)."
   echo "Note: your '.agents/skill-sources.local.json' (custom sources) was NOT touched."
+fi
+
+# If this machine has the user-scope skill mirror, those copies don't refresh
+# themselves. OFFER a refresh (consent-gated — we never write user-scope from here).
+MIRROR_MANIFEST="${MIRROR_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/obsidian-base/skill-mirror.json}"
+if [ -f "$MIRROR_MANIFEST" ]; then
+  echo
+  echo "Your global skills (user-scope mirror) may now be out of date. To refresh them:"
+  echo "  .agents/scripts/sync-skills.sh --mirror-only   (or run the /install-skills skill)"
 fi

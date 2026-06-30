@@ -25,10 +25,14 @@ From the base repo (or via the one-liner in `SETUP.md`):
 ```powershell
 ./setup/setup.ps1           # Windows
 ```
-Pass `--yes` and env vars (`VAULT_NAME`, `MCP_CLIENTS=both|desktop|code`) for an
-unattended run. The script: installs prereqs (Homebrew/winget, git, jq, uv, Obsidian),
+Pass `--yes` and env vars (`VAULT_NAME`, `MCP_CLIENTS=both|desktop|code`,
+`MIRROR_SKILLS=yes|no`) for an unattended run. The script: installs prereqs
+(Homebrew/winget, git, jq, uv, Obsidian),
 creates a LOCAL vault from this base (no GitHub needed), provisions the Obsidian Git +
 Local REST API plugins, pre-generates the REST API key, wires the MCP, and opens Obsidian.
+Interactively it also offers to mirror the portable skills into your machine's user-scope
+(so they work in *every* project); `MIRROR_SKILLS=yes` opts in unattended, `no` skips —
+the `install-skills` skill enables or refreshes it later either way.
 
 **Personalization is the `setup-vault` step.** The script runs `init-vault.sh`
 (vault name, tagline, purpose, primary tag) automatically. If you ran the bootstrap

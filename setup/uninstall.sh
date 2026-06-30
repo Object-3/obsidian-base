@@ -13,6 +13,10 @@
 # rely on elsewhere. Your notes are never deleted by this script. If you ever
 # want the vault gone, delete the folder yourself — it prints the location.
 #
+# It also NEVER removes skills you installed into your tools' user-scope
+# (~/.claude/skills, ~/.agents/skills) — once installed those are yours and you
+# may rely on them in other projects. This script only informs you they remain.
+#
 # Optional flag:
 #   --remove-plugins   also remove the Local REST API + Git plugins and the
 #                      REST API key from the vault's .obsidian/ (reversible —
@@ -104,11 +108,26 @@ remove_plugins() {
   say "Plugins removed (re-run setup.sh to restore them)."
 }
 
+# ---- 5. user-scope skills: INFORM, never remove --------------------------
+# The portable skills you installed into your tools' user-scope are YOURS — they
+# are left in place. We only tell you they remain (removal is your manual choice).
+inform_user_scope_skills() {
+  local man="${MIRROR_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/obsidian-base/skill-mirror.json}"
+  [ -f "$man" ] || return
+  have jq || return
+  local n; n="$(jq -r '.owned | length' "$man" 2>/dev/null || echo 0)"
+  [ -n "$n" ] && [ "$n" != "0" ] && [ "$n" != "null" ] || return
+  say "$n skill(s) you installed into user-scope are KEPT — offboarding never removes them."
+  printf '    They stay in ~/.claude/skills and ~/.agents/skills, yours to use anywhere.\n'
+  printf '    To remove them yourself: delete those skill dirs and %s\n' "$man"
+}
+
 say "Reversing the obsidian-base agent integration — your notes will NOT be touched…"
 remove_desktop
 remove_code
 remove_global_rule
 [ -n "$REMOVE_PLUGINS" ] && remove_plugins
+inform_user_scope_skills
 
 VLOC="$VAULT_DIR"; [ -z "$VLOC" ] && VLOC="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
 printf '\n\033[1;32m✓ Disconnected.\033[0m Restart Claude Desktop / start a fresh Claude Code session to drop the server.\n'
