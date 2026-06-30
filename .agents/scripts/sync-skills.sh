@@ -95,11 +95,14 @@ mirror_user_scope() {
   trap 'rm -rf "$mlock" 2>/dev/null; [ "$_ee" = 1 ] && set -e; trap - RETURN' RETURN
 
   # Sweep leftover atomic-swap staging from a crashed prior mirror (safe: we hold the
-  # lock, so no live mirror owns one). The repo-side sync sweeps canon's stages; this
-  # does the same for the user-scope targets so .tmp.$$ orphans never accumulate.
+  # lock, so no live mirror owns one). Stages live in the target's PARENT dir, not the
+  # skills root, so a host's skill scanner never catches a half-written dir mid-rename;
+  # we sweep both the parent-level stages and the legacy in-root location (stages left
+  # by older script versions) so no .tmp orphans accumulate anywhere.
   local _d
   for _d in "$CLAUDE_USER_SKILLS" "$CODEX_USER_SKILLS"; do
     [ -d "$_d" ] && find "$_d" -maxdepth 1 -name '.*.tmp.*' -exec rm -rf {} + 2>/dev/null
+    [ -d "$(dirname "$_d")" ] && find "$(dirname "$_d")" -maxdepth 1 -name '.skill-mirror-stage.*' -exec rm -rf {} + 2>/dev/null
   done
 
   local lock_hash owned_json
@@ -124,7 +127,11 @@ mirror_user_scope() {
     did_any=0
     for dest in "$CLAUDE_USER_SKILLS" "$CODEX_USER_SKILLS"; do
       mkdir -p "$dest" 2>/dev/null || { echo "   ! cannot create $dest; skipping" >&2; continue; }
-      stage="$dest/.$name.tmp.$$"; rm -rf "$stage" 2>/dev/null
+      # Stage in $dest's PARENT, not inside $dest: the parent shares the target's
+      # filesystem so the final mv is still an atomic rename, but the half-written copy
+      # never sits in the skills root where a host's skill scanner would catch it
+      # mid-rename and momentarily list a ".<name>.tmp" dir as a skill.
+      stage="$(dirname "$dest")/.skill-mirror-stage.$name.$$"; rm -rf "$stage" 2>/dev/null
       if cp -R "$CANON_SKILLS/$name" "$stage" 2>/dev/null && rm -rf "$dest/$name" 2>/dev/null && mv "$stage" "$dest/$name" 2>/dev/null; then
         did_any=1
       else

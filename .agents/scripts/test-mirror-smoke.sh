@@ -14,6 +14,7 @@
 #   4. owned[] is retained across refresh (the freeze-bug guard)
 #   5. --status exit codes (0 up-to-date / 1 stale / 2 not-installed)
 #   6. --mirror-only works with no network
+#   7. no staging artifacts leak into the scanned skills root (stages live in the parent)
 #
 # Exits non-zero if any assertion fails.
 set -uo pipefail
@@ -80,6 +81,19 @@ mkdir -p "$WORK/bin"; printf '#!/bin/sh\nexit 1\n' > "$WORK/bin/curl"; chmod +x 
 rm -rf "$CLAUDE_USER_SKILLS" "$CODEX_USER_SKILLS"
 PATH="$WORK/bin:$PATH" bash "$SYNC" --mirror-only >/dev/null 2>&1
 [ -f "$CLAUDE_USER_SKILLS/$OWN_SKILL/SKILL.md" ] && ok "mirrors with no network" || bad "mirror failed offline"
+
+echo "== 7: no staging artifacts leak into the scanned skills root =="
+# A host's skill scanner reads the skills ROOT; staging there would momentarily list a
+# half-written '.tmp' dir as a skill. Stages must live in the parent and be swept clean.
+bash "$SYNC" --mirror-only >/dev/null 2>&1
+root_junk=0
+for d in "$CLAUDE_USER_SKILLS" "$CODEX_USER_SKILLS"; do
+  n=$(find "$d" -maxdepth 1 \( -name '.*.tmp.*' -o -name '.skill-mirror-stage.*' \) 2>/dev/null | wc -l | tr -d ' ')
+  [ "$n" = "0" ] || root_junk=1
+done
+[ "$root_junk" -eq 0 ] && ok "no temp/stage dirs in skills root after run" || bad "staging leaked into skills root"
+par_junk=$(find "$WORK" -maxdepth 1 -name '.skill-mirror-stage.*' 2>/dev/null | wc -l | tr -d ' ')
+[ "$par_junk" = "0" ] && ok "parent stages swept clean" || bad "stage orphans left in parent dir"
 
 echo
 echo "smoke: $pass passed, $fail failed"
