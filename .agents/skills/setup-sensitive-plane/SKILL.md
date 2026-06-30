@@ -1,6 +1,6 @@
 ---
 name: setup-sensitive-plane
-description: Set up (or repair) durable, multi-device storage for the vault's confidential `_sensitive/` plane by backing it with an org-tenant cloud-synced folder, WITHOUT putting it in git or breaking Obsidian. Use when the user handles confidential / NDA / third-party material and wants it backed up and on their other devices, when onboarding asks "where should my sensitive notes live", or when they say "set up sensitive storage", "back up _sensitive", "cloud-back my private notes", "multi-device confidential notes", "protect my confidential vault", "migrate _local to _sensitive", or "make my confidential notes durable". Drives setup-sensitive-plane.sh and ALWAYS ends by telling the user, in plain language, that they have a private folder and how to use it.
+description: Set up (or repair) durable, multi-device storage for the vault's confidential `_sensitive/` plane by backing it with an org-tenant cloud-synced folder, WITHOUT putting it in git or breaking Obsidian. Use when the user handles confidential / NDA / third-party material and wants it backed up and on their other devices, when onboarding asks "where should my sensitive notes live", or when they say "set up sensitive storage", "back up _sensitive", "cloud-back my private notes", "multi-device confidential notes", "protect my confidential vault", "migrate _local to _sensitive", "make my confidential notes durable", or "I don't have Google Drive / OneDrive set up yet". Installs and signs them into the Google Drive or OneDrive desktop client when none is present, drives setup-sensitive-plane.sh, and ALWAYS ends by telling the user, in plain language, that they have a private folder and how to use it.
 ---
 
 # Set up the Sensitive plane's backing store
@@ -51,6 +51,53 @@ Decision matrix (verified guidance):
 | SOC 2 Type 2 | yes | yes | no | none found |
 | Headless agent read | Graph app-only (`Files.Read.All`) | service account | **no file API** | n/a |
 | Verdict for NDA data | ✅ strong (mature DLP) | ✅ good | ❌ never | ❌ personal only |
+
+## 1.5 No cloud client yet? Install & sign in first
+
+If `detect` found **no** cloud client (or only a personal one and they need an org account),
+don't stop at "go install it" — take them as far as you safely can. Only the interactive bits
+(entering credentials, approving an OS extension) are theirs; everything up to that, you can do.
+**Only two clients matter here: Google Drive for desktop and OneDrive** — don't reach for any
+other. A plain local `_sensitive/` already works in the meantime, so there's no rush; this step
+only adds the durable, multi-device backing.
+
+**Fast path — offer to install it for them** (run the cell matching their machine and the org
+provider from step 1; it may prompt for their password or an OS approval):
+
+| | macOS (Homebrew) | Windows (winget) |
+|---|---|---|
+| **Google Drive** | `brew install --cask google-drive` | `winget install -e --id Google.GoogleDrive` |
+| **OneDrive** | `brew install --cask onedrive` | `winget install -e --id Microsoft.OneDrive` |
+
+No package manager? Send them to the **official source** (say so explicitly — they're about to
+install software and should feel safe it's the real thing):
+- **Google Drive for desktop** → <https://www.google.com/drive/download/> (the `GoogleDrive.dmg` /
+  `GoogleDriveSetup.exe` installer).
+- **OneDrive** → already **built into Windows**; on Mac, install from the **Mac App Store**
+  (search "OneDrive") or Microsoft's official OneDrive download page.
+
+**Sign in — with the *org* account.** Open the app and sign in through the browser; on macOS
+approve the system / file-provider extension if prompted (System Settings). ⚠️ If the only
+account is personal (`@gmail.com` / consumer Microsoft), re-warn: no DPA/BAA → fine for personal
+notes, **wrong for NDA / third-party material**.
+
+**Make the backing folder live fully on the device — the one setting that actually matters.**
+The whole proven-safe config hinges on files being *kept local*, not online-only / streamed
+(online-only is exactly what dehydrates into the 0-byte stubs Obsidian mis-reads). Providers
+rename this control often, so go by the **concept** and confirm by **end-state**, not by a
+memorized click-path:
+- **Google Drive:** use **Mirror** mode (files always local), or right-click the backing folder →
+  *Offline access → Available offline*. ([using files offline](https://support.google.com/drive/answer/2375012) ·
+  [stream vs mirror](https://support.google.com/drive/answer/13401938))
+- **OneDrive:** right-click the backing folder → **Always keep on this device** (Files On-Demand;
+  it's a per-device setting). ([Windows](https://support.microsoft.com/en-us/office/save-disk-space-with-onedrive-files-on-demand-for-windows-0e6860d3-d9f3-4971-b321-7092438fb38e) ·
+  [Mac](https://support.microsoft.com/en-us/office/save-disk-space-with-onedrive-files-on-demand-for-mac-529f6d53-e572-4922-a585-e7a318c135f0))
+
+If a label has moved, look it up in that provider's help center in-session rather than guessing —
+then let `verify` / `check` (step 2) be the proof it worked, not the menu wording.
+
+**Re-run `setup-sensitive-plane detect`** to confirm the new cloud root now appears, then continue
+to step 2.
 
 ## 2. Provision (drive the script)
 
@@ -135,6 +182,23 @@ not**, which the provider's IAM decides upstream.
 Everything is safe to re-run: `detect` / `verify` / `check` / `explain` are read-only or
 self-cleaning; `migrate` no-ops once done; `link` no-ops if already linked to the same
 target (re-point with `--force`); `record` replaces its block in place (never duplicates).
+
+## Low-maintenance by design (don't let this drift)
+
+This skill deliberately stays **decoupled from any provider's UI flow**, which changes often:
+
+- **Stable anchors only** in the repo — official download / help URLs and package-manager IDs
+  (`brew install --cask …`, `winget … --id …`), which move rarely. No transcribed, screenshot-
+  by-screenshot click-paths that rot.
+- **Verify by end-state, not by UI.** `verify` (probe note round-trips, non-zero) and `check`
+  (no 0-byte stubs, `.obsidian/` excluded, vault not whole-synced) are the source of truth —
+  they pass regardless of which menus a provider renamed.
+- **Defer volatile specifics to runtime.** When an in-app label has moved, look it up in the
+  provider's help center in-session instead of trusting a frozen step list.
+
+Keep it that way: the scope is **Google Drive and OneDrive only**. If you find yourself adding a
+third provider or a click-by-click walkthrough, stop — point at the official docs and lean on
+`verify` / `check` instead.
 
 ## Notes
 

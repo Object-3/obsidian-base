@@ -160,7 +160,12 @@ cmd_detect() {
     found=1
     printf '  • %-42s [%s]\n      %s\n' "$provider" "$hint" "$path"
   done < <(detect_clients)
-  [ -n "$found" ] || echo "  (none found — install an org-tenant cloud client, or use a fallback)"
+  if [ -z "$found" ]; then
+    echo "  (none installed yet)"
+    echo "    → No cloud client found. /setup-sensitive-plane can install & sign you in"
+    echo "      (Google Drive or OneDrive, org account) — see its 'Install & sign in first' step."
+    echo "      A plain local _sensitive/ already works meanwhile; this only adds durable backup."
+  fi
 
   echo
   c_say "Recorded choice (.agents/vault-profile.md):"
