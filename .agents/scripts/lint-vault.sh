@@ -14,7 +14,7 @@
 # Exit: 0 = all conform (or nothing to check), 1 = offenders found, 2 = usage error.
 #
 # Scope: the note area only — vault root + topical folders. It deliberately SKIPS
-#   raw/ (immutable sources), _local/, assets/, dot-folders, setup/, the backbone
+#   raw/ (immutable sources), _sensitive/ (+ legacy _local/), assets/, dot-folders, setup/, the backbone
 #   (index.md, log.md), engine/meta markdown (AGENTS/CLAUDE/README/SETUP/llms), and
 #   docs/ + plans/ (their own schema, maintained by the kw-* skills). Same exclusions
 #   as the /normalize-vault skill.
@@ -39,7 +39,7 @@ case "$primary_tag" in *"{{"*) primary_tag="" ;; esac
 # scan; excluded_path() below is the real filter and runs in BOTH modes.
 list_default() {
   find . \
-    \( -type d \( -name '.?*' -o -name raw -o -name _local -o -name assets \
+    \( -type d \( -name '.?*' -o -name raw -o -name _sensitive -o -name _local -o -name assets \
                   -o -name docs -o -name plans -o -name setup \) -prune \) -o \
     -type f -name '*.md' -print \
   | sed 's|^\./||' | sort
@@ -60,8 +60,8 @@ list_args() {
 excluded_path() {
   case "/$1" in */.*) return 0 ;; esac                       # any dot-folder segment
   case "$1" in
-    raw/*|_local/*|assets/*|docs/*|plans/*|setup/*) return 0 ;;
-    */raw/*|*/_local/*|*/assets/*|*/docs/*|*/plans/*|*/setup/*) return 0 ;;
+    raw/*|_sensitive/*|_local/*|assets/*|docs/*|plans/*|setup/*) return 0 ;;
+    */raw/*|*/_sensitive/*|*/_local/*|*/assets/*|*/docs/*|*/plans/*|*/setup/*) return 0 ;;
   esac
   case "$(basename "$1")" in
     AGENTS.md|CLAUDE.md|README.md|SETUP.md|llms.txt|index.md|log.md) return 0 ;;

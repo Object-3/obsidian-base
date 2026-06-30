@@ -26,3 +26,14 @@ Declared topic folders (promote a topic here once it exceeds ~5–8 root notes �
 the topical-folder convention in `AGENTS.md`):
 
 - _(none yet — root-only is fine until the vault grows)_
+
+<!-- BEGIN sensitive-plane (managed by setup-sensitive-plane) -->
+## Sensitive plane backing store
+
+Where the gitignored `_sensitive/` (Sensitive) plane physically lives and how agents reach it.
+Maintained by `/setup-sensitive-plane`. No secrets/paths here (vault-profile is in git).
+
+- **Status:** not configured — `_sensitive/` lives on this machine only (unbacked). Run
+  `/setup-sensitive-plane` to back it up + make it multi-device, confidentially.
+<!-- END sensitive-plane -->
+

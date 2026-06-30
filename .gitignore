@@ -17,17 +17,25 @@
 # Trash
 .trash/
 
-# --- Local-only assets (large/sensitive originals: PDFs, images, datasets) ---
-# These stay on your machine and NEVER reach GitHub. Keep a small markdown
-# reference note in the vault instead (see AGENTS.md). The folder's README/.gitkeep
-# are tracked so the folder ships with the template.
+# --- Sensitive plane + local-only originals (confidential notes; large/sensitive
+#     originals: PDFs, images, datasets) ---
+# These stay on your machine (optionally cloud-backed for durability) and NEVER reach
+# GitHub. Keep a small markdown reference note in the vault instead (see AGENTS.md).
+# The folder's README/.gitkeep are tracked so the folder ships with the template.
+_sensitive/*
+!_sensitive/.gitkeep
+!_sensitive/README.md
+# Back-compat: `_local/` was this folder's name before the rename to `_sensitive/`.
+# Keep it ignored too, so a vault created before the rename never loses protection on
+# its confidential notes after pulling base updates (the `/setup-sensitive-plane`
+# `migrate` step renames the folder on disk; this line keeps it safe until then).
 _local/*
 !_local/.gitkeep
 !_local/README.md
 
-# Belt-and-suspenders for the _local/ convention: any note suffixed *.private.md is
+# Belt-and-suspenders for the _sensitive/ convention: any note suffixed *.private.md is
 # NEVER tracked, wherever it sits in the vault — so a sensitive note stays out of git
-# even outside _local/. (Obsidian still indexes it; git ignores it.) Pairs with the
+# even outside _sensitive/. (Obsidian still indexes it; git ignores it.) Pairs with the
 # pre-commit confidential guard and the /ingest-pdf workflow.
 **/*.private.md
 

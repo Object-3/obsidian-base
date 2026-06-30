@@ -60,7 +60,7 @@ grow in as the vault expands.
 | `index.md` | Catalog of every note (link + one-line summary), the navigation backbone | backbone |
 | `log.md` | Append-only record of ingests/changes | backbone |
 | `assets/` | Where Obsidian drops pasted/embedded images, keeping them out of your note area. Auto-managed — you never touch it. | mechanism |
-| `_local/` | **Gitignored** escape hatch for files too big or sensitive for git (PDFs, datasets, private originals). The pre-commit size guard points here. | mechanism |
+| `_sensitive/` | **Gitignored** Sensitive plane: confidential notes + large/sensitive originals (PDFs, datasets) kept off git but first-class in Obsidian. Optionally cloud-backed for durability via `/setup-sensitive-plane`. The pre-commit size + confidential guards point here. (Pre-rename name: `_local/`, still gitignored for back-compat.) | mechanism |
 | `raw/` | *Convention, created on demand:* immutable source material (clippings, transcripts, exports) you synthesize from and never edit | convention |
 | `docs/knowledge/` | Compounded learnings (the compounding loop) | `kw-compound` writes; `knowledge-base-researcher` + `stale-knowledge-checker` read |
 | `docs/solutions/` | Solved-problem / pattern write-ups | `past-work-researcher` reads |
@@ -89,12 +89,12 @@ PDFs, big images, datasets, exports — **don't belong in git** (GitHub caps fil
 
 You don't have to police this by hand. A **pre-commit size guard** blocks anything
 over ~25MB and tells you what to do, and the fix it points to is the gitignored
-**`_local/`** folder: drop the file there and it stays on your machine, never reaching
-GitHub, while Obsidian and local agents can still read/embed it. For files you need on
-other devices or want to share, put them in **Google Drive** (or similar) and link to
-them; agents read them via the Google Drive MCP.
+**`_sensitive/`** folder: drop the file there and it stays on your machine, never
+reaching GitHub, while Obsidian and local agents can still read/embed it. For files you
+need on other devices or want to share, put them in **Google Drive** (or similar) and
+link to them; agents read them via the Google Drive MCP.
 
-When a `_local/` (or Drive) file matters to the knowledge, it's worth leaving a small
+When a `_sensitive/` (or Drive) file matters to the knowledge, it's worth leaving a small
 **reference note** in the vault — what the file is, a few key points, and where the
 original lives — so the KB "knows about" it without storing the bytes. (Same idea as
 keeping immutable sources in `raw/`, just for things too big or private to commit.)
@@ -113,24 +113,71 @@ three buckets — **Shareable → Sensitive → Original**, in rising order of s
 - **Shareable** → the tracked vault. Strategy-level synthesis with **no**
   third-party-confidential detail. For third-party material, **de-identify** (no name,
   owner, or verbatim figures/records); often there's no per-document Shareable note at all.
-- **Sensitive** → `_local/` (gitignored, but still a first-class Obsidian note
+- **Sensitive** → `_sensitive/` (gitignored, but still a first-class Obsidian note
   locally). The candid / number-heavy synthesis. When you're on a branch, write these
-  **through the Obsidian MCP into the live vault** — git can't carry `_local/`, but the
+  **through the Obsidian MCP into the live vault** — git can't carry `_sensitive/`, but the
   MCP lands them where they're indexed and gitignored. Tag `classification:
   confidential-local-only`.
-- **Original** → Google Drive (shareable / automatable) or `_local/`. Never committed.
+- **Original** → Google Drive (shareable / automatable) or `_sensitive/`. Never committed.
 
 **Keep links intact across planes** with one rule: *links point up the sensitivity
 gradient (shareable → sensitive → original) freely; references down are optional, labeled,
 and never load-bearing.* A Shareable note's `related:` lists only other Shareable notes
 (always resolves); Sensitive notes and Originals link up to Shareable; the one downward
 pointer is a labeled callout that reads as intentional when the local note is absent.
-Catalog Sensitive notes in a gitignored **`_local/_index.md`** (the local-plane counterpart
+Catalog Sensitive notes in a gitignored **`_sensitive/_index.md`** (the local-plane counterpart
 to `index.md`); keep `index.md` / `log.md` de-identified.
 
 Two machine backstops so this doesn't depend on memory: **`**/*.private.md`** is
 gitignored everywhere, and the **pre-commit guard** blocks committing a `classification:
-confidential…` note outside `_local/`. The **`/ingest-pdf`** skill runs this whole workflow.
+confidential…` note outside `_sensitive/`. The **`/ingest-pdf`** skill runs this whole workflow.
+
+### Where the Sensitive plane lives (durability & multi-device)
+
+By default `_sensitive/` lives on **one machine**, unbacked — lose the disk, lose the
+notes, and they're not on your other devices. Fix that **without** putting them in git
+or breaking Obsidian: back `_sensitive/` with an **org-tenant cloud-synced folder**.
+Obsidian computes the graph / search / backlinks from on-disk files, so a cloud-synced
+folder works **fully** as long as files are **materialized locally** (not online-only
+placeholders). Set it up with the **`/setup-sensitive-plane`** skill.
+
+**Proven-safe config (non-negotiable):**
+1. **Pin files local** — disable OneDrive "Files On-Demand" / iCloud "Optimize Storage" /
+   Drive offline-only for this subtree ("Always keep on this device"). Dehydrated
+   placeholders are what produce **0-byte stub files** that Obsidian mis-reads or overwrites.
+2. **One sync engine per path** — only the cloud client touches `_sensitive/`. Never also
+   run Obsidian Sync or Obsidian-Git over it (the classic two-writer race).
+3. **Never let the cloud client touch `.obsidian/`** — the most collision-prone path; it
+   stays in git, outside the synced subtree.
+4. **Sync only the `_sensitive/` subtree**, not the whole vault.
+5. **Agents read via the provider API** (service account / app-only), not by reading/writing
+   through the sync client.
+
+**Provider — org tenant only.** Use **Microsoft 365 / OneDrive** or **Google Workspace /
+Drive** on an **organization tenant** with a DPA/BAA in place; headless agents read via
+Graph app-only (`Files.Read.All`) or a Google service account respectively. **Never
+iCloud** (no BAA, no third-party file API), **never Obsidian Sync** (no SOC 2 / BAA —
+fine for personal knowledge, not firm-confidential), and **never a personal account** for
+NDA-bound material.
+
+**One-line rule:** *Sensitive plane → org-tenant cloud-sync folder, pinned local, one
+sync engine, agents read via the provider API. Never iCloud, never Obsidian Sync, never a
+personal account for NDA'd material.*
+
+**How agents discover the Sensitive plane (by access context).** Git is never an
+ingress — `_sensitive/` is gitignored — so what an agent can see depends on *where it runs*:
+
+| Where the agent runs | Sees `_sensitive/`? | Discovery path |
+|---|---|---|
+| Same machine (file tools, or Obsidian + MCP on localhost) | **Yes** — ordinary on-disk files | list / grep / read; Obsidian search + backlinks |
+| Fresh clone / cloud container / CI | **No** — absent by design | only the de-identified `index.md` + the `> [!lock]` companion callouts |
+| Remote / headless with cloud creds | **Yes**, if wired | the provider API on the backing folder (its ACL is the security boundary) |
+
+So an agent shouldn't trust git alone to know the plane exists. The signposts are: the
+**`> [!lock] Local-only companion`** callout in a Shareable note (announces a Sensitive
+companion exists), **`_sensitive/_index.md`** (the local catalog), and the **Sensitive
+plane backing store** block in `.agents/vault-profile.md` (records provider / mechanism /
+how a headless agent reads it — no secrets, since vault-profile is tracked in git).
 
 ## Operating rules (LLM-Wiki pattern, after Karpathy)
 
@@ -155,7 +202,7 @@ This KB is maintained like Karpathy's [LLM Wiki](https://gist.github.com/karpath
    rewrite it, and don't bother for throwaway scratch. On a yes, run the full
    normalization (frontmatter → `TL;DR … Caveats` structure → ≥2 `[[links]]` +
    backlinks → `index.md` + `log.md`); the `/normalize-vault` skill does all of it.
-   Never reformat `raw/` (immutable) or `_local/`; if you can't ask (non-interactive
+   Never reformat `raw/` (immutable) or `_sensitive/`; if you can't ask (non-interactive
    run), just flag it rather than changing it.
 7. **Compound.** End a cycle by extracting reusable learnings to `docs/knowledge/`.
 
