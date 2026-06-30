@@ -33,6 +33,10 @@ separate checkout, not the live auto-syncing vault). See "content vs engine" in 
    This merges the base's curated sources with your `skill-sources.local.json`, so
    base curation updates flow in while your custom sources persist.
 
+   If `update-base.sh` printed a note that your **user-scope mirror** may be out of date
+   (it detects the manifest), the global copies don't auto-refresh. **Offer** to run
+   `/install-skills` (or `sync-skills.sh --mirror-only`) — consent-gated; don't auto-run.
+
 3. **Review, commit on a branch, open a PR.** `git diff --staged` to review.
 
 4. Append a one-line entry to `log.md` noting the base update.

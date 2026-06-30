@@ -81,6 +81,12 @@ The curated list lives in base-owned `.agents/skill-sources.json` (refreshed by
 Then run `.agents/scripts/sync-skills.sh`. See `.agents/SKILLS.md` for the full
 mechanism, the Windows symlink fallback, and skill-name resolution.
 
+**Use the skills in every project (optional).** Skills are vendored into the repo
+(so they work in cloud/web sessions and shared clones), and you can *also* mirror the
+portable ones into your machine's user-scope so they work outside the vault too — via
+the **`/install-skills`** skill or the onboarding opt-in. It's additive and reversible;
+see [`.agents/SKILLS.md`](.agents/SKILLS.md) → *User-scope mirror*.
+
 ## Sync model (humans + agents, no extra surface)
 
 The vault ships a recommended **Obsidian Git** config (`.obsidian/plugins/obsidian-git/data.json`):

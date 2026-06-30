@@ -1,6 +1,6 @@
 {
   "enabledPlugins": {
-    "compound-knowledge@compound-knowledge-plugin": true,
+    "compound-knowledge@compound-knowledge-plugin": false,
     "skill-creator@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {

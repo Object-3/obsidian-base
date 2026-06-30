@@ -1,6 +1,6 @@
 ---
 name: offboard
-description: Reverse the obsidian-base agent integration WITHOUT deleting the user's notes. Removes the Obsidian MCP from Claude Desktop and Claude Code and the managed rules block from the global ~/.claude/CLAUDE.md; optionally removes the Obsidian plugins. Never deletes the vault and never uninstalls prerequisites. Use when someone says "uninstall this", "disconnect my vault", "remove the obsidian MCP", "undo the setup", "reverse onboarding", or reports the integration is causing problems. Drives setup/uninstall.sh (macOS/Linux) or setup/uninstall.ps1 (Windows) and SELF-HEALS with tools when steps differ or fail.
+description: Reverse the obsidian-base agent integration WITHOUT deleting the user's notes. Removes the Obsidian MCP from Claude Desktop and Claude Code and the managed rules block from the global ~/.claude/CLAUDE.md; optionally removes the Obsidian plugins. Never deletes the vault, never uninstalls prerequisites, and never removes skills you installed into your tools' user-scope. Use when someone says "uninstall this", "disconnect my vault", "remove the obsidian MCP", "undo the setup", "reverse onboarding", or reports the integration is causing problems. Drives setup/uninstall.sh (macOS/Linux) or setup/uninstall.ps1 (Windows) and SELF-HEALS with tools when steps differ or fail.
 ---
 
 # Offboard a vault (reverse the integration, keep the notes)
@@ -12,6 +12,12 @@ tools to diagnose and finish anything it can't.
 **The one rule you must not break: never delete the vault.** Notes are the user's data.
 The script is built so it *cannot* delete the vault — keep it that way. If the user
 explicitly wants the vault gone, tell them the folder path and let *them* delete it.
+
+**Second rule: never remove user-scope skills.** If the user ran `/install-skills`, the
+portable skills now live in their tools' user-scope (`~/.claude/skills`, `~/.agents/skills`)
+and they may rely on them in *other* projects. Offboarding disconnects the vault — it does
+**not** claw those back. The script leaves them in place and only *informs* how many remain;
+if the user truly wants them gone, point them at the dirs and let *them* delete.
 
 ## 0. Read the situation
 - Detect the OS (`uname` / `$OS`). macOS/Linux → `setup/uninstall.sh`; Windows → `setup/uninstall.ps1`.
@@ -43,6 +49,10 @@ sentinels). It prints the vault location and leaves the notes untouched.
   rules by hand), don't guess — point them at the `## Obsidian knowledge base` section
   to remove manually.
 - **Vault still present**: confirm the vault folder and its notes are exactly as before.
+- **User-scope skills retained**: if `/install-skills` was used, confirm the skills are
+  still in `~/.claude/skills` / `~/.agents/skills` and the manifest
+  (`${XDG_CONFIG_HOME:-~/.config}/obsidian-base/skill-mirror.json`) is intact. The
+  script prints how many remain. Do **not** delete them — that's the user's call.
 
 ## 3. Hand off
 Tell the user, plainly:

@@ -8,6 +8,7 @@ source: /kw-compound after setting up the vault so /kw-* and marketing skills wo
 related:
   - "[[llm-agnostic-agent-repo-layout]]"
   - "[[vet-vendored-skills-and-avoid-sync-clobber]]"
+  - "[[userscope-skill-mirror]]"
 ---
 
 # Vendor GitHub-hosted skills into the repo for cloud sessions

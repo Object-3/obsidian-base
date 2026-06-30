@@ -180,6 +180,30 @@ including ephemeral cloud containers that don't auto-install them.
   `skill-sources.local.json` untouched. Then run `sync-skills.sh`.
 - Full mechanism: [`.agents/SKILLS.md`](.agents/SKILLS.md).
 
+### Where skills read & write (knowledge planes)
+
+Skills that **generate knowledge** split into two planes that never share a directory —
+keep them apart so nothing collides and every agent knows where to look:
+
+- **Vault plane (`kw-*`) — this is the KB.** `kw-compound` writes `docs/knowledge/`,
+  `kw-plan`/`kw-work` write `plans/`. These are the **committed, Obsidian-indexed
+  deliverable**: vault frontmatter, catalogued in `index.md`, synced to the canonical
+  vault on `main`. Knowledge work *in this repo* goes through `kw-*`.
+- **Engineering plane (`ce-*`) — for code repos, repo-scoped.** Compound-engineering's
+  `ce-compound` writes `docs/solutions/<category>/` and `ce-plan` writes `docs/plans/`,
+  with a different (enum-based) schema. CE skills write **relative to the working
+  directory**, so even when installed globally their output stays in *whatever repo you
+  run them in* — engineering learnings correctly land in that code repo, not here.
+  **Don't run CE knowledge-writing skills inside the vault:** they'd scatter a second,
+  schema-incompatible store that pollutes the Obsidian graph and fails `lint-vault.sh`.
+- **One copy, EveryInc's name.** The `kw-*` skills are vendored verbatim from EveryInc's
+  `compound-knowledge` plugin. Their registered `name:` is `kw:compound` (the colon is
+  EveryInc's; the folder is `kw-compound`) — invoke the **upstream name, `/kw:compound`**, and
+  don't fork it to dash. They're committed under `.agents/skills/` for cloud sessions, and the
+  vault **disables the `compound-knowledge` plugin** (`.claude/settings.json`) so the same skill
+  isn't loaded twice; the skills delegate to flat-named agents vendored in `.agents/agents/`, so
+  they resolve without it.
+
 ## Working in this vault: content vs engine
 
 Two kinds of change flow through this repo, and they use **different paths**:
