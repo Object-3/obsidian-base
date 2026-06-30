@@ -116,14 +116,15 @@ untouched.
 - **Targets:** `~/.claude/skills` (Claude Code, the Claude Desktop **Code tab**, and
   Conductor via shared `$HOME`) and `~/.agents/skills` (Codex's native user-scope).
   Only the **lock-tracked portable set** is mirrored — the hand-authored vault-engine
-  skills are never installed globally.
+  skills (everything *not* in the lock) are never installed globally.
 - **Safe + reversible-but-retained:** a manifest
   (`${XDG_CONFIG_HOME:-~/.config}/obsidian-base/skill-mirror.json`) makes it
   non-destructive (your own same-named skills are never overwritten) and refreshes
   ours-only. Offboarding **keeps** these skills — they're yours.
 - **Caveat:** personal scope shadows project scope locally (precedence
   `personal > project`); across multiple vaults the mirror is last-writer-wins, which
-  `/install-skills --status` flags via the manifest's recorded source hash + vault path.
+  the `/install-skills` status check (`sync-skills.sh --status`) flags via the manifest's
+  recorded source hash + vault path.
 - **Not for chat surfaces:** claude.ai chat takes skills only as a manual zip upload;
   ChatGPT has none. The mirror targets the scriptable CLI tools only.
 

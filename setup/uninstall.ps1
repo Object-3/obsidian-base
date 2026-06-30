@@ -100,10 +100,16 @@ if ($RemovePlugins) {
 # ---- 5. user-scope skills: INFORM, never remove --------------------------
 # The portable skills you installed into your tools' user-scope are YOURS - left
 # in place. We only tell you they remain (removal is your manual choice).
-$man = $env:MIRROR_MANIFEST; if (-not $man) { $man = Join-Path $HOME ".config\obsidian-base\skill-mirror.json" }
+$man = $env:MIRROR_MANIFEST
+if (-not $man) {
+  $xdg = $env:XDG_CONFIG_HOME; if (-not $xdg) { $xdg = Join-Path $HOME ".config" }
+  $man = Join-Path $xdg "obsidian-base\skill-mirror.json"   # match sync-skills.sh / uninstall.sh
+}
 if (Test-Path $man) {
   try {
-    $n = (Get-Content $man -Raw | ConvertFrom-Json).owned.Count
+    # @(...) forces array semantics so a single-element owned list doesn't unwrap to a
+    # scalar (whose .Count is 1 only by luck); an empty/missing list counts as 0.
+    $n = @((Get-Content $man -Raw | ConvertFrom-Json).owned).Count
     if ($n -gt 0) {
       Say "$n skill(s) you installed into user-scope are KEPT - offboarding never removes them."
       Write-Host "    They stay in ~/.claude\skills and ~/.agents\skills, yours to use anywhere."

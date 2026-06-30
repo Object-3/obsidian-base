@@ -41,10 +41,11 @@ LOCKDIR="$ROOT/.agents/.sync-skills.lock"   # concurrency guard (mkdir-based, po
 CLAUDE_USER_SKILLS="${CLAUDE_USER_SKILLS:-$HOME/.claude/skills}"   # Claude Code (also Desktop Code tab + Conductor via shared $HOME)
 CODEX_USER_SKILLS="${CODEX_USER_SKILLS:-$HOME/.agents/skills}"     # OpenAI Codex native user-scope
 MIRROR_MANIFEST="${MIRROR_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/obsidian-base/skill-mirror.json}"
-USER_SCOPE=""; MIRROR_ONLY=""
+USER_SCOPE=""; MIRROR_ONLY=""; STATUS_ONLY=""
 for _arg in "$@"; do case "$_arg" in
   --user-scope)  USER_SCOPE=1 ;;
   --mirror-only) USER_SCOPE=1; MIRROR_ONLY=1 ;;
+  --status)      STATUS_ONLY=1 ;;
 esac; done
 [ -n "${MIRROR_USER_SCOPE:-}" ] && USER_SCOPE=1
 
@@ -72,8 +73,37 @@ mirror_user_scope() {
   elif command -v shasum    >/dev/null 2>&1; then hasher="shasum -a 256"
   else echo "   ! no sha256sum/shasum; skipping user-scope mirror" >&2; return 0; fi
 
+  # Serialize the $HOME writes with a mkdir-based lock next to the manifest. The full
+  # sync holds its own repo lock, but two MIRROR-ONLY runs (e.g. the update-base nudge
+  # and a manual /install-skills, or two sessions) would otherwise race the per-skill
+  # rm+cp below and interleave into partial dirs. First run wins; a lock older than
+  # 5 min is treated as stale (a crashed run) and reclaimed so we never wedge.
+  mkdir -p "$(dirname "$MIRROR_MANIFEST")" 2>/dev/null || true
+  local mlock="$MIRROR_MANIFEST.lock"
+  if ! mkdir "$mlock" 2>/dev/null; then
+    local mage; mage=$(( $(date +%s) - $(stat -f %m "$mlock" 2>/dev/null || stat -c %Y "$mlock" 2>/dev/null || echo 0) ))
+    if [ "$mage" -ge 300 ] && rm -rf "$mlock" 2>/dev/null && mkdir "$mlock" 2>/dev/null; then
+      echo "   reclaimed stale mirror lock" >&2
+    else
+      echo "   ! another user-scope mirror is in progress ($mlock); skipping" >&2; return 0
+    fi
+  fi
+  # Drop the lock and restore errexit on EVERY return path. errexit is disabled for the
+  # $HOME writes (a permission/space failure must log-and-skip, not abort the already
+  # finished repo sync); the trap restores it so a future early return can't leak set +e.
+  local _ee=0; case $- in *e*) _ee=1 ;; esac
+  trap 'rm -rf "$mlock" 2>/dev/null; [ "$_ee" = 1 ] && set -e; trap - RETURN' RETURN
+
+  # Sweep leftover atomic-swap staging from a crashed prior mirror (safe: we hold the
+  # lock, so no live mirror owns one). The repo-side sync sweeps canon's stages; this
+  # does the same for the user-scope targets so .tmp.$$ orphans never accumulate.
+  local _d
+  for _d in "$CLAUDE_USER_SKILLS" "$CODEX_USER_SKILLS"; do
+    [ -d "$_d" ] && find "$_d" -maxdepth 1 -name '.*.tmp.*' -exec rm -rf {} + 2>/dev/null
+  done
+
   local lock_hash owned_json
-  lock_hash="$(jq -S '.skills | sort' "$LOCK" | $hasher | cut -d' ' -f1)"
+  lock_hash="$(jq -S '.skills | sort' "$LOCK" 2>/dev/null | $hasher | cut -d' ' -f1)"
   owned_json="[]"; [ -f "$MIRROR_MANIFEST" ] && owned_json="$(jq -c '.owned // []' "$MIRROR_MANIFEST" 2>/dev/null || echo '[]')"
 
   echo ">> user-scope mirror"
@@ -103,11 +133,21 @@ mirror_user_scope() {
     done
     [ "$did_any" -eq 1 ] && installed+=("$name")
   done < <(jq -r '.skills[]?' "$LOCK")
-  set -e
 
-  # owned = the set we installed/refreshed this run (skipped-as-yours names are NOT recorded).
-  local owned_now; owned_now="$(printf '%s\n' "${installed[@]:-}" | jq -R . | jq -s 'map(select(. != "")) | unique')"
-  mkdir -p "$(dirname "$MIRROR_MANIFEST")" 2>/dev/null || true
+  # owned = names we wrote this run UNION names we already owned that still exist on disk
+  # in a target. Rebuilding owned from this run alone would drop any skill that was
+  # skipped/failed this run — reclassifying it as "the user's own" (collision-skip) and
+  # freezing it from every future refresh. Only drop a name when it's gone everywhere.
+  local retained=() oname
+  while IFS= read -r oname; do
+    [ -n "$oname" ] || continue
+    if [ -e "$CLAUDE_USER_SKILLS/$oname" ] || [ -e "$CODEX_USER_SKILLS/$oname" ]; then
+      retained+=("$oname")
+    fi
+  done < <(jq -r '.[]?' <<<"$owned_json")
+
+  local owned_now
+  owned_now="$(printf '%s\n' "${installed[@]:-}" "${retained[@]:-}" | jq -R . | jq -s 'map(select(. != "")) | unique')"
   # Atomic write (temp + mv): a failed/partial write must never truncate the existing
   # manifest — a corrupt manifest reads back as empty, which would make every skill look
   # like the user's own and silently stop refreshes.
@@ -119,13 +159,52 @@ mirror_user_scope() {
   else
     rm -f "$MIRROR_MANIFEST.tmp.$$" 2>/dev/null; echo "   ! could not write manifest $MIRROR_MANIFEST" >&2
   fi
-  echo "   mirrored $(jq 'length' <<<"$owned_now") skill(s) into user-scope (manifest: $MIRROR_MANIFEST)"
+  echo "   mirrored ${#installed[@]} skill(s) into user-scope; $(jq 'length' <<<"$owned_now") owned total (manifest: $MIRROR_MANIFEST)"
+}
+
+# Print user-scope mirror status (offline, read-only): how many skills, when written,
+# whether this vault's portable set has drifted since, and whether another vault wrote
+# it last. Exit: 0 up-to-date, 1 stale/drift, 2 not installed / can't compare. Used by
+# the /install-skills skill and safe for agents/CI to gate on.
+mirror_status() {
+  if [ ! -f "$MIRROR_MANIFEST" ]; then
+    echo "user-scope mirror: not installed (no manifest at $MIRROR_MANIFEST)"
+    echo "   enable with: .agents/scripts/sync-skills.sh --mirror-only   (or the /install-skills skill)"
+    return 2
+  fi
+  [ -f "$LOCK" ] || { echo "user-scope mirror: no lock at $LOCK to compare against; run the sync first" >&2; return 2; }
+  local hasher
+  if   command -v sha256sum >/dev/null 2>&1; then hasher="sha256sum"
+  elif command -v shasum    >/dev/null 2>&1; then hasher="shasum -a 256"
+  else echo "user-scope mirror: no sha256sum/shasum; cannot check drift" >&2; return 2; fi
+  local cur prev vault when n
+  cur="$(jq -S '.skills | sort' "$LOCK" 2>/dev/null | $hasher | cut -d' ' -f1)" || cur=""
+  prev="$(jq -r '.lock_hash  // ""'  "$MIRROR_MANIFEST" 2>/dev/null || echo '')"
+  vault="$(jq -r '.vault_path // "?"' "$MIRROR_MANIFEST" 2>/dev/null || echo '?')"
+  when="$(jq  -r '.written    // "?"' "$MIRROR_MANIFEST" 2>/dev/null || echo '?')"
+  n="$(jq -r '.owned | length' "$MIRROR_MANIFEST" 2>/dev/null || echo 0)"
+  echo "user-scope mirror: $n skill(s), last written $when"
+  echo "   manifest: $MIRROR_MANIFEST"
+  if [ "$vault" != "$ROOT" ]; then
+    echo "   ! last written from a DIFFERENT vault: $vault"
+    echo "     (this vault: $ROOT — refreshing here makes this vault the owner; last-writer-wins)"
+  fi
+  if [ -n "$prev" ] && [ "$prev" = "$cur" ]; then
+    echo "   up to date with this vault's portable set"
+    return 0
+  fi
+  echo "   ! stale: this vault's portable set has changed since the mirror was written"
+  echo "     refresh with: .agents/scripts/sync-skills.sh --mirror-only   (or the /install-skills skill)"
+  return 1
 }
 
 # --mirror-only: refresh the user-scope mirror from the repo's CURRENT vendored set
 # (the committed lock) WITHOUT re-fetching upstream — fast, offline, no concurrency
 # guard needed. This is the path /install-skills uses for a local refresh.
 if [ -n "$MIRROR_ONLY" ]; then mirror_user_scope; exit 0; fi
+# --status: read-only, offline drift check. Capture the rc so set -e doesn't abort on a
+# non-zero (stale/not-installed) status before we can propagate it as the exit code.
+if [ -n "$STATUS_ONLY" ]; then rc=0; mirror_status || rc=$?; exit "$rc"; fi
 
 command -v curl >/dev/null || { echo "curl is required" >&2; exit 1; }
 [ -f "$MANIFEST" ] || [ -f "$LOCAL_MANIFEST" ] || { echo "no skill-sources.json or skill-sources.local.json found" >&2; exit 1; }
@@ -143,6 +222,11 @@ if ! mkdir "$LOCKDIR" 2>/dev/null; then
     echo "reclaimed stale sync lock"
   else
     echo "another sync-skills run is in progress ($LOCKDIR); exiting" >&2
+    # A user-initiated --user-scope still wants its mirror refreshed even when the repo
+    # sync is busy: the committed vendored set is already on disk, so mirror from it
+    # (mirror_user_scope takes its own lock, no repo lock needed). Otherwise an explicit
+    # install would silently no-op behind a success exit.
+    [ -n "$USER_SCOPE" ] && mirror_user_scope
     exit 0
   fi
 fi
