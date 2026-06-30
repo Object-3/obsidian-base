@@ -43,6 +43,13 @@ related:                                 # optional, list of links
   `Recommendations` → `Caveats`.
 - **Voice:** research-backed and decisive. Cite sources with dates. Separate
   *verified facts* from *speculation/prediction*. Flag assumptions and caveats.
+- **Spell out acronyms — don't assume the reader knows them.** Expand every
+  acronym, abbreviation, or initialism on **first use** in a note: write the full
+  term with the short form in parentheses after it — e.g. "conversion rate
+  optimization (CRO)", "jobs to be done (JTBD)" — then use the short form for the
+  rest of the note. This applies to prose; lowercase `tags` may stay abbreviated.
+  The same rule holds when an agent reports back in conversation: lead with plain
+  language, gloss the shorthand once.
 - Update `updated:` when you materially change a note.
 
 ## Directory map (where things live)
