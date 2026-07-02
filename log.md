@@ -58,3 +58,14 @@ lint passes. Newest at the bottom. Prefix entries with `## [YYYY-MM-DD] <type> |
   happy-path rc assertion, fetch-failure trap cleanup).
 - New learning [[ephemeral-fetch-remote-pattern]]. Surfaced follow-ups filed as
   Object-3/obsidian-base#30 (credential scrub), #31 (URL/precedence dedupe), #32 (docs).
+
+## [2026-07-02] fix | Vault-creation hygiene: code-review follow-ups (post-merge hardening)
+- `setup.sh`/`add-vault.sh`/`setup.ps1`: `git init -b main` now falls back to
+  `git init` + `symbolic-ref` for git < 2.28 (was a hard abort right after `rm -rf .git`);
+  and a placeholder guard warns loudly if `{{PLACEHOLDER}}` tokens survive personalization
+  instead of silently committing them as a false success. `setup.ps1` brought to parity
+  (deferred commit + `-b main` + guard, gated on a fresh-vault flag).
+- `test-add-vault-integration.sh`: 20 → 22 checks — asserts the first commit is on `main`
+  and holds real values (no `{{ }}`), which the prior test could not distinguish from the bug.
+- Cross-linked [[fresh-vault-uncommitted-personalization-and-branch-drift]] and
+  [[onedrive-sensitive-plane-setup-gotchas]] (each ↔ the other + [[ephemeral-fetch-remote-pattern]]).

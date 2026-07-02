@@ -41,6 +41,7 @@ if (-not $VaultName) { $VaultName = Read-Host "Name your knowledge vault" }
 if (-not $VaultName) { $VaultName = "My Knowledge Base" }
 $slug = ($VaultName.ToLower() -replace '[^a-z0-9]+','-').Trim('-')
 $VaultDir = Join-Path $VaultParent $slug
+$FreshVault = $false
 if (Test-Path (Join-Path $VaultDir ".git")) {
   Say "Vault already exists at $VaultDir - reusing it."
 } else {
@@ -58,9 +59,13 @@ if (Test-Path (Join-Path $VaultDir ".git")) {
   if ($BaseRepoUrl -ne "https://github.com/Object-3/obsidian-base.git") {
     Set-Content ".agents\.base-url" $BaseRepoUrl -NoNewline
   }
-  git init -q; git add -A
-  git -c user.name="Vault Owner" -c user.email="vault@localhost" commit -q -m "Initial vault from obsidian-base"
+  # Explicit -b main so the default branch never inherits the machine's init.defaultBranch
+  # (may be `master`); fall back for git < 2.28. The initial commit is DEFERRED to after
+  # personalization (section 3a) so the first commit holds real values, not {{PLACEHOLDER}}s.
+  git init -q -b main 2>$null
+  if ($LASTEXITCODE -ne 0) { git init -q; git symbolic-ref HEAD refs/heads/main }
   git config core.hooksPath .githooks
+  $FreshVault = $true
 }
 Set-Location $VaultDir
 
@@ -70,6 +75,19 @@ if ($bash) {
   & $bash ".agents/scripts/init-vault.sh" "--yes"
 } else {
   Warn "Git Bash not found; run .agents/scripts/init-vault.sh manually (it needs bash/jq)."
+}
+
+# ---- 3a. make the initial commit, AFTER personalizing --------------------
+# Deferred from vault creation so the first commit holds real values. Guard: if
+# {{PLACEHOLDER}} tokens remain (init-vault failed, or Git Bash was missing so it never
+# ran), warn loudly instead of silently committing template tokens as a false success.
+if ($FreshVault) {
+  Set-Location $VaultDir
+  if (Select-String -Path .agents\vault-profile.md,index.md,log.md,llms.txt,README.md -Pattern '{{' -Quiet -ErrorAction SilentlyContinue) {
+    Warn "Vault still has {{PLACEHOLDER}} tokens - personalization didn't complete; run .agents/scripts/init-vault.sh, then commit again."
+  }
+  git add -A
+  git -c user.name="Vault Owner" -c user.email="vault@localhost" commit -q -m "Initial vault from obsidian-base"
 }
 
 # ---- 3b. (optional) mirror skills into user-scope ------------------------

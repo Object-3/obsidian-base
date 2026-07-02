@@ -5,6 +5,9 @@ tags: [setup, add-vault, init-vault, git, branch, gotcha]
 confidence: high
 created: 2026-07-02
 source: setting up a second topic vault via /add-vault — found personalization sitting uncommitted since creation, and the vault on `master` instead of `main`; fixed in the same change that added this note
+related:
+  - "[[onedrive-sensitive-plane-setup-gotchas]]"
+  - "[[ephemeral-fetch-remote-pattern]]"
 ---
 
 # A freshly created vault has rough, uncommitted edges — don't assume "created" means "clean"

@@ -5,6 +5,9 @@ tags: [setup-sensitive-plane, onedrive, microsoft365, sensitive-plane, gotcha]
 confidence: high
 created: 2026-07-02
 source: running /setup-sensitive-plane with Microsoft 365 / OneDrive for a new topic vault
+related:
+  - "[[fresh-vault-uncommitted-personalization-and-branch-drift]]"
+  - "[[ephemeral-fetch-remote-pattern]]"
 ---
 
 # Setting up `_sensitive/` on OneDrive: three recurring gotchas
