@@ -2,11 +2,12 @@
 # ===========================================================================
 # obsidian-base — reverse the agent integration (macOS / Linux)
 # ===========================================================================
-# Undoes what setup.sh wired up, WITHOUT EVER TOUCHING YOUR NOTES. By default
-# it only DISCONNECTS the integration:
-#   1. removes the mcp-obsidian server from Claude Desktop's config
-#   2. removes the mcp-obsidian server from Claude Code (claude mcp remove)
-#   3. removes the managed block from ~/.claude/CLAUDE.md (between sentinels)
+# Undoes what setup.sh / add-vault.sh wired up, WITHOUT EVER TOUCHING YOUR NOTES.
+# By default it only DISCONNECTS the integration:
+#   1. removes every obsidian MCP server (obsidian-* and the legacy mcp-obsidian)
+#      from all local clients: Claude Desktop, Claude Code, and Codex
+#   2. removes the managed block from ~/.claude/CLAUDE.md (between sentinels)
+# (Removing just ONE vault's wiring is not offered — this disconnects them all.)
 #
 # It does NOT delete your vault, and it does NOT uninstall prerequisites
 # (git, jq, uv, Obsidian, Homebrew) — those are general-purpose tools you may
@@ -46,33 +47,45 @@ have() { command -v "$1" >/dev/null 2>&1; }
 OS="$(uname -s)"
 case "$OS" in Darwin) PLATFORM=mac ;; Linux) PLATFORM=linux ;; *) PLATFORM=other ;; esac
 
-# ---- 1. Claude Desktop config --------------------------------------------
-remove_desktop() {
+# Use the shared adapter registry when it's next to us (the normal case). It
+# knows every client (Claude Desktop, Claude Code, Codex) and every vault-named
+# label. Fall back to a legacy single-name removal if the lib isn't available.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LIB_OK=""
+# shellcheck disable=SC1091
+[ -f "$ROOT/setup/lib.sh" ] && . "$ROOT/setup/lib.sh" && LIB_OK=1
+
+# ---- 1+2. remove every obsidian MCP server from every client -------------
+# Wholesale disconnect: removes all obsidian-* servers (and the legacy
+# mcp-obsidian) from all clients. Removing a single vault's wiring is a separate
+# concern (not offered here).
+remove_all_servers() {
+  if [ -n "$LIB_OK" ]; then
+    local client label removed=0
+    for client in $MCP_ALL_CLIENTS; do
+      mcp_client_present "$client" || continue
+      for label in $(mcp_list "$client"); do
+        mcp_unwire "$client" "$label" && { say "Removed $label from $client."; removed=$((removed+1)); }
+      done
+    done
+    [ "$removed" = 0 ] && say "No obsidian MCP servers found in any client — nothing to do."
+    return
+  fi
+  # --- fallback: legacy single-name removal (lib.sh not found) ---
+  warn "setup/lib.sh not found; removing only the legacy 'mcp-obsidian' entry."
   local cfg="$CLAUDE_DESKTOP_CONFIG"
   if [ -z "$cfg" ]; then
     [ "$PLATFORM" = mac ] && cfg="$HOME/Library/Application Support/Claude/claude_desktop_config.json" \
                           || cfg="$HOME/.config/Claude/claude_desktop_config.json"
   fi
-  [ -f "$cfg" ] || { say "No Claude Desktop config at $cfg — skipping."; return; }
-  have jq || { warn "jq not found; edit $cfg by hand and delete the \"mcp-obsidian\" entry under .mcpServers."; return; }
-  if jq -e '.mcpServers["mcp-obsidian"]' "$cfg" >/dev/null 2>&1; then
+  if [ -f "$cfg" ] && have jq && jq -e '.mcpServers["mcp-obsidian"]' "$cfg" >/dev/null 2>&1; then
     jq 'if .mcpServers then .mcpServers |= del(.["mcp-obsidian"]) else . end' "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg"
     say "Removed mcp-obsidian from Claude Desktop config."
-  else
-    say "mcp-obsidian not present in Claude Desktop config — nothing to do."
   fi
-}
-
-# ---- 2. Claude Code ------------------------------------------------------
-remove_code() {
-  have claude || { say "Claude Code CLI not found — skipping."; return; }
-  # setup adds it at user scope; try that first, then a plain remove as fallback.
-  if claude mcp remove mcp-obsidian --scope user >/dev/null 2>&1; then
-    say "Removed mcp-obsidian from Claude Code (user scope)."
-  elif claude mcp remove mcp-obsidian >/dev/null 2>&1; then
-    say "Removed mcp-obsidian from Claude Code."
-  else
-    say "mcp-obsidian not registered in Claude Code — nothing to do."
+  if have claude; then
+    claude mcp remove mcp-obsidian --scope user >/dev/null 2>&1 \
+      || claude mcp remove mcp-obsidian >/dev/null 2>&1 \
+      || say "mcp-obsidian not registered in Claude Code — nothing to do."
   fi
 }
 
@@ -123,8 +136,7 @@ inform_user_scope_skills() {
 }
 
 say "Reversing the obsidian-base agent integration — your notes will NOT be touched…"
-remove_desktop
-remove_code
+remove_all_servers
 remove_global_rule
 [ -n "$REMOVE_PLUGINS" ] && remove_plugins
 inform_user_scope_skills

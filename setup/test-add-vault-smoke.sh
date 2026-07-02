@@ -146,6 +146,18 @@ check "migrated desktop entry keeps port 27124" "[ \"\$(jq -r '.mcpServers[\"obs
 mig_out="$(lib_migrate_legacy_mcp "$MV" 2>&1)"
 check "second migration is a clean no-op"     "echo \"\$mig_out\" | grep -q 'nothing to migrate'"
 
+echo "== wholesale removal (uninstall's loop) =="
+for_each_client wire "obsidian-one" 27130 "k1" >/dev/null 2>&1
+for_each_client wire "obsidian-two" 27132 "k2" >/dev/null 2>&1
+# mirror remove_all_servers: for each client, unwire every listed obsidian label
+for c in $MCP_ALL_CLIENTS; do
+  mcp_client_present "$c" || continue
+  for l in $(mcp_list "$c"); do mcp_unwire "$c" "$l"; done
+done
+check "desktop: no obsidian servers remain" "[ -z \"\$(mcp_list claude_desktop)\" ]"
+check "codex: no obsidian servers remain"   "[ -z \"\$(mcp_list codex_cli)\" ]"
+check "claude code: no obsidian servers remain" "[ -z \"\$(mcp_list claude_code)\" ]"
+
 echo
 if [ "$FAIL" -eq 0 ]; then
   printf '\033[1;32m✓ all %d checks passed\033[0m\n' "$PASS"; exit 0

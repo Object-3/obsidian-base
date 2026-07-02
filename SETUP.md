@@ -72,15 +72,56 @@ machine-wide. You can change your mind anytime — just ask your assistant to
 **"install my skills everywhere"** (or *"are my global skills up to date?"*). These
 skills stay even if you later disconnect the vault — they're yours.
 
+## Add another vault (a second topic knowledge base)
+
+Already have one vault working and want a **separate** one for a different topic —
+e.g. "Obsidian Puma" beside "Obsidian Strategy"? From inside your existing vault, run:
+
+**macOS/Linux:** `./setup/add-vault.sh`   *(or ask your assistant to "add another vault")*
+
+It creates a brand-new empty vault with the identical setup, and wires it into your
+local AI clients — **Claude Desktop, Claude Code, and OpenAI Codex** (whichever are
+installed) — under its **own name** (`obsidian-<slug>`), on its **own port**, without
+disturbing the vault you already have. The first time you run it, it also gives your
+existing vault a proper name (renaming the old generic `mcp-obsidian` connection).
+
+Two things to know so both vaults work at once:
+- **Open both vaults in Obsidian.** A vault is only reachable while its window is open
+  (the Local REST API bridge runs per open vault). Closed vault → the assistant just
+  can't reach that one.
+- **Start a fresh assistant session** so the new connection loads, then ask your
+  assistant to "list the files in `obsidian-<name>`" to confirm.
+
+(Just want to rename the existing connection without adding a vault?
+Run `./setup/migrate-mcp-names.sh`.)
+
+## Reach a vault from ChatGPT or Claude on the web (optional, advanced)
+
+The setup above is **local-first** — your vault stays on your computer and your
+assistant reaches it over `localhost`. The **ChatGPT desktop app on macOS can't use a
+local vault** today (its connectors are remote-only, on web/Windows). If you want to
+reach a vault from **ChatGPT or Claude on the web** from anywhere, you'd expose the
+vault's built-in MCP endpoint (`https://127.0.0.1:<port>/mcp/`, secured by its API key)
+at a **public HTTPS URL** — via a tunnel (Cloudflare Tunnel / ngrok / Tailscale Funnel)
+or a cloud-hosted setup. Those web clients dial the URL from the provider's cloud, so a
+`localhost` address won't work — it needs to be publicly reachable.
+
+**Trade-off:** this puts your knowledge base behind a network endpoint, which cuts
+against the local-first, "nothing leaves your machine" default. Keep it auth-gated and
+behind a private tunnel, and treat confidential material the same careful way as the
+`_sensitive/` plane. It's deliberately **not** set up for you — it's here so you know
+the path exists.
+
 ## Changed your mind? Disconnect it
 
 To reverse the integration **without touching your notes**, run from your vault folder:
 
 **macOS:** `./setup/uninstall.sh`  **Windows:** `.\setup\uninstall.ps1`
 
-It removes the assistant connection (the Obsidian MCP from Claude Desktop and Claude
-Code) and the vault rules added to your global assistant config. Your vault and notes
-are left exactly where they are — it even prints the location. Add `--remove-plugins`
+It removes the assistant connections (every Obsidian MCP server — for all your vaults —
+from Claude Desktop, Claude Code, and OpenAI Codex) and the vault rules added to your
+global assistant config. Your vault and notes are left exactly where they are — it even
+prints the location. Add `--remove-plugins`
 (macOS/Linux) or `-RemovePlugins` (Windows) to also remove the Obsidian plugins. To
 re-enable later, just run `setup` again. (Or ask your assistant to "disconnect my vault.")
 
