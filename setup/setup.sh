@@ -20,10 +20,10 @@ set -euo pipefail
 BASE_REPO_URL="${BASE_REPO_URL:-https://github.com/Object-3/obsidian-base.git}"
 VAULT_PARENT="${VAULT_PARENT:-$HOME/Documents}"
 VAULT_NAME="${VAULT_NAME:-}"                 # prompted if empty
-MCP_CLIENTS="${MCP_CLIENTS:-both}"           # desktop | code | both | none
+MCP_CLIENTS="${MCP_CLIENTS:-all}"            # all | desktop | code | codex | both | none | "<space-separated client list>"
 MIRROR_SKILLS="${MIRROR_SKILLS:-ask}"        # ask | yes | no — also install skills into user-scope (~/.claude, ~/.agents) so they work in EVERY project
 OBSIDIAN_HOST="${OBSIDIAN_HOST:-127.0.0.1}"
-OBSIDIAN_PORT="${OBSIDIAN_PORT:-27124}"
+OBSIDIAN_PORT="${OBSIDIAN_PORT:-}"           # empty ⇒ auto-allocate the next free port (27124+); set to force a specific HTTPS port
 SKIP_PREREQS="${SKIP_PREREQS:-}"             # set=1 to skip installing brew/git/jq/uv/Obsidian
 NO_OPEN="${NO_OPEN:-}"                        # set=1 to not launch Obsidian at the end
 CLAUDE_DESKTOP_CONFIG="${CLAUDE_DESKTOP_CONFIG:-}"   # override Claude Desktop config path (testing)
@@ -128,85 +128,39 @@ configure_skill_mirror() {
 }
 
 # ---- 4. provision Obsidian plugins + REST API key ------------------------
-gh_release_dl() { # repo destdir  (downloads main.js, manifest.json, styles.css from latest release)
-  local repo="$1" dest="$2" base tag
-  mkdir -p "$dest"
-  tag="$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" | jq -r .tag_name)"
-  [ -n "$tag" ] && [ "$tag" != null ] || { warn "no release for $repo"; return 1; }
-  base="https://github.com/$repo/releases/download/$tag"
-  curl -fsSL "$base/manifest.json" -o "$dest/manifest.json" || return 1
-  curl -fsSL "$base/main.js"       -o "$dest/main.js"       || return 1
-  curl -fsSL "$base/styles.css"    -o "$dest/styles.css" 2>/dev/null || true
-}
-
+# Delegates to setup/lib.sh (sourced after create_vault). Allocates a free port
+# unless the user forced one via OBSIDIAN_PORT, so a vault created on a machine
+# that already has one lands on its own port instead of colliding.
 provision_plugins() {
-  cd "$VAULT_DIR"
-  say "Installing Obsidian plugins (Git + Local REST API)…"
-  gh_release_dl "Vinzent03/obsidian-git" ".obsidian/plugins/obsidian-git" || warn "obsidian-git download failed"
-  gh_release_dl "coddingtonbear/obsidian-local-rest-api" ".obsidian/plugins/obsidian-local-rest-api" || warn "local-rest-api download failed"
-  # generate a REST API key and pre-seed the plugin so the MCP can auth without manual copy
-  API_KEY="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | xxd -p | tr -d '\n')"
-  printf '%s' "$API_KEY" > "$VAULT_DIR/.obsidian/.rest-api-key"   # gitignored; for our reference
-  local lr=".obsidian/plugins/obsidian-local-rest-api/data.json"
-  if [ -f ".obsidian/plugins/obsidian-local-rest-api/main.js" ]; then
-    jq -n --arg k "$API_KEY" '{apiKey:$k, crypto:null, port: 27124, insecurePort: 27123, enableInsecureServer:true, bindingHost:"127.0.0.1"}' > "$lr"
-  fi
-  # enable community plugins
-  jq -n '["obsidian-local-rest-api","obsidian-git"]' > .obsidian/community-plugins.json
+  [ -n "$OBSIDIAN_PORT" ] || OBSIDIAN_PORT="$(lib_alloc_free_port)"
+  lib_provision_plugins "$VAULT_DIR" "$OBSIDIAN_PORT"
 }
 
-# ---- 5. wire the Obsidian MCP into Claude Desktop and/or Claude Code ------
+# ---- 5. wire the Obsidian MCP into the local AI clients -------------------
+# One vault-named server (obsidian-<slug>) appended into every selected client
+# via the lib adapter registry (Claude Desktop, Claude Code, Codex CLI).
 configure_mcp() {
   [ "$MCP_CLIENTS" = none ] && return
   have uv || warn "uv not found — the MCP runtime (uvx mcp-obsidian) may not start."
   local key; key="$(cat "$VAULT_DIR/.obsidian/.rest-api-key" 2>/dev/null || echo "")"
   [ -n "$key" ] || { warn "no REST API key; skipping MCP wiring"; return; }
+  local label; label="$(lib_mcp_label "$VAULT_NAME")"
 
-  if [ "$MCP_CLIENTS" = desktop ] || [ "$MCP_CLIENTS" = both ]; then
-    # Resolve uvx to an ABSOLUTE path for the Desktop config. Claude Desktop
-    # launches MCP servers on macOS with a stripped PATH (/usr/bin:/bin:/usr/sbin:
-    # /sbin) and doesn't source the shell, so a bare "uvx" (installed under
-    # ~/.local/bin or Homebrew) isn't found and the server silently never starts.
-    # The Claude Code branch below stays bare — Code inherits the shell PATH.
-    local uvx_bin; uvx_bin="$(command -v uvx 2>/dev/null || echo uvx)"
-    [ "$uvx_bin" = uvx ] && warn "uvx not resolvable; Desktop MCP config will use bare 'uvx' and may not start until uvx is on PATH."
-    local cfg="$CLAUDE_DESKTOP_CONFIG"
-    if [ -z "$cfg" ]; then
-      [ "$PLATFORM" = mac ] && cfg="$HOME/Library/Application Support/Claude/claude_desktop_config.json" \
-                            || cfg="$HOME/.config/Claude/claude_desktop_config.json"
-    fi
-    # Claude Desktop app itself isn't installed by this script — wire the config
-    # anyway (it activates the moment they install it), but flag it so the final
-    # message tells them to download it.
-    if [ "$PLATFORM" = mac ]; then
-      { [ -d "/Applications/Claude.app" ] || [ -d "$HOME/Applications/Claude.app" ]; } \
-        && ASSISTANT_PRESENT=1 || CLAUDE_DESKTOP_MISSING=1
-    else
-      have claude-desktop && ASSISTANT_PRESENT=1 || CLAUDE_DESKTOP_MISSING=1
-    fi
-    mkdir -p "$(dirname "$cfg")"; [ -f "$cfg" ] || echo '{}' > "$cfg"
-    say "Wiring MCP into Claude Desktop…"
-    jq --arg k "$key" --arg h "$OBSIDIAN_HOST" --arg p "$OBSIDIAN_PORT" --arg uvx "$uvx_bin" '
-      .mcpServers = (.mcpServers // {}) |
-      .mcpServers["mcp-obsidian"] = {command:$uvx, args:["mcp-obsidian"],
-        env:{OBSIDIAN_API_KEY:$k, OBSIDIAN_HOST:$h, OBSIDIAN_PORT:$p}}' \
-      "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg"
+  # Assistant-presence detection drives the final "no assistant installed" note.
+  if [ "$PLATFORM" = mac ]; then
+    { [ -d "/Applications/Claude.app" ] || [ -d "$HOME/Applications/Claude.app" ]; } \
+      && ASSISTANT_PRESENT=1 || CLAUDE_DESKTOP_MISSING=1
+  else
+    have claude-desktop && ASSISTANT_PRESENT=1 || CLAUDE_DESKTOP_MISSING=1
   fi
-  if [ "$MCP_CLIENTS" = code ] || [ "$MCP_CLIENTS" = both ]; then
-    if have claude; then
-      ASSISTANT_PRESENT=1
-      say "Wiring MCP into Claude Code…"
-      # --scope user → available across ALL the user's projects, not just this
-      # directory (default scope is "local"). The vault is a consume-from-anywhere
-      # knowledge base, so the MCP must be reachable from every Claude Code session.
-      claude mcp add mcp-obsidian --scope user --env OBSIDIAN_API_KEY="$key" --env OBSIDIAN_HOST="$OBSIDIAN_HOST" \
-        --env OBSIDIAN_PORT="$OBSIDIAN_PORT" -- uvx mcp-obsidian 2>/dev/null \
-        || warn "couldn't add MCP to Claude Code (add it manually: see SETUP.md)"
-    else
-      CLAUDE_CODE_MISSING=1
-      warn "Claude Code CLI not found; skipping (install it, then re-run with MCP_CLIENTS=code)."
-    fi
-  fi
+  have claude && ASSISTANT_PRESENT=1 || CLAUDE_CODE_MISSING=1
+  have codex  && ASSISTANT_PRESENT=1 || true
+
+  # Map the MCP_CLIENTS selector onto concrete adapter names.
+  local sel; sel="$(lib_select_clients "$MCP_CLIENTS")"
+  [ -n "$sel" ] || return
+  say "Wiring the vault MCP ($label, port $OBSIDIAN_PORT) into: $sel"
+  MCP_ALL_CLIENTS="$sel" for_each_client wire "$label" "$OBSIDIAN_PORT" "$key"
 }
 
 open_vault() {
@@ -218,6 +172,10 @@ open_vault() {
 # ---- run ------------------------------------------------------------------
 install_prereqs
 create_vault
+# The base template (incl. setup/lib.sh) is on disk only after create_vault
+# clones it — safe to source here for both piped (curl|bash) and local runs.
+# shellcheck disable=SC1091
+. "$VAULT_DIR/setup/lib.sh"
 configure_vault
 configure_skill_mirror
 provision_plugins
