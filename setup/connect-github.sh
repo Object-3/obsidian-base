@@ -42,5 +42,19 @@ else
   gh repo create "$OWNER/$REPO_NAME" --"$VISIBILITY" --source=. --remote=origin --push
 fi
 
+# 4. 'origin' now exists, so it's safe to turn on Obsidian Git's auto-sync.
+#    setup.sh/add-vault.sh ship it OFF (autoSaveInterval/autoPullInterval 0,
+#    autoPullOnBoot/autoBackupAfterFileChange false, disablePush true) so a
+#    vault that only has the 'base' remote (added for /update-base) never
+#    auto-pushes — or prompts a user to pick 'base' as a sync target, which
+#    would push private vault content into the public template repo.
+GIT_PLUGIN_DATA=".obsidian/plugins/obsidian-git/data.json"
+if [ -f "$GIT_PLUGIN_DATA" ] && have jq; then
+  jq '.autoSaveInterval = 10 | .autoPullInterval = 10 | .autoPullOnBoot = true
+      | .autoBackupAfterFileChange = true | .disablePush = false' \
+    "$GIT_PLUGIN_DATA" > "$GIT_PLUGIN_DATA.tmp" && mv "$GIT_PLUGIN_DATA.tmp" "$GIT_PLUGIN_DATA"
+  say "Enabled Obsidian Git auto-sync (commit + pull + push) now that 'origin' is connected."
+fi
+
 printf '\n\033[1;32m✓ Backed up.\033[0m %s/%s — Obsidian Git will keep it synced.\n' "$OWNER" "$REPO_NAME"
 echo "Your 'base' remote (for .agents/scripts/update-base.sh) is unchanged."
