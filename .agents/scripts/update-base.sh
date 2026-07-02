@@ -9,17 +9,19 @@
 #
 # What it refreshes (base-owned engine only):
 #   AGENTS.md, CLAUDE.md, .gitignore, .gitattributes, .agents/SKILLS.md,
-#   .agents/skill-sources.json, .agents/scripts/*, .claude/hooks/*, .claude/settings.json,
+#   .agents/skill-sources.json, .agents/scripts/* (incl. dream-scan.sh + test-dream-smoke.sh),
+#   .claude/hooks/* (incl. dream-if-stale.sh), .claude/settings.json,
 #   .githooks/*, setup/*, SETUP.md, the base-AUTHORED skills
-#   .agents/skills/{update-base,setup-vault,onboard,offboard,normalize-vault,install-skills,ingest-pdf,setup-sensitive-plane},
+#   .agents/skills/{update-base,setup-vault,onboard,offboard,normalize-vault,install-skills,ingest-pdf,setup-sensitive-plane,vault-dream},
 #   and the one base-owned Obsidian snippet .obsidian/snippets/hide-engine-files.css
 #
 # What it NEVER touches (yours):
 #   your notes, .agents/vault-profile.md, .agents/skill-sources.local.json, the VENDORED
 #   skills/agents (those come via sync-skills), your own hand-authored skills, index.md,
-#   log.md, llms.txt, README.md, docs/, plans/, raw/, and all of .obsidian/ EXCEPT the
-#   single base-owned snippet above (your own snippets, workspace, graph, appearance,
-#   and which snippets you've enabled all stay yours)
+#   log.md, hot.md, .agents/dream-state (per-vault backbone/state — overlaying the watermark
+#   would reset your dream progress; init-vault seeds them), llms.txt, README.md, docs/,
+#   plans/, raw/, and all of .obsidian/ EXCEPT the single base-owned snippet above (your own
+#   snippets, workspace, graph, appearance, and which snippets you've enabled all stay yours)
 #
 # Config (override via env, or pin persistently in .agents/.base-ref):
 #   BASE_REPO=Object-3/obsidian-base                  # owner/name (GitHub shorthand)
@@ -56,6 +58,7 @@ PATHS=(
   ".agents/skills/install-skills"
   ".agents/skills/ingest-pdf"
   ".agents/skills/setup-sensitive-plane"
+  ".agents/skills/vault-dream"
   "setup"
   "SETUP.md"
   # The one base-owned Obsidian snippet: the rule for which engine files to hide from
