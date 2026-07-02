@@ -69,3 +69,26 @@ lint passes. Newest at the bottom. Prefix entries with `## [YYYY-MM-DD] <type> |
   and holds real values (no `{{ }}`), which the prior test could not distinguish from the bug.
 - Cross-linked [[fresh-vault-uncommitted-personalization-and-branch-drift]] and
   [[onedrive-sensitive-plane-setup-gotchas]] (each ↔ the other + [[ephemeral-fetch-remote-pattern]]).
+
+## [2026-07-02] fix | Sensitive-plane `.gitignore` line survives `/update-base`
+- `setup-sensitive-plane.sh link` used to append the bare `/_sensitive` ignore rule (for
+  the symlink form of `_sensitive/`) to the tracked `.gitignore` — but `.gitignore` is
+  base-owned and `/update-base` overlays it wholesale (checkout, no merge), so that line
+  was silently wiped on the next base pull and the symlink reappeared as untracked.
+  Reproduced twice in one downstream-vault session: fixed by hand, then wiped again by an
+  unrelated `/update-base` run minutes later.
+- Fix: `link` now writes the exclusion to `.git/info/exclude` instead — git-local, never
+  tracked, so no overlay of tracked files can ever touch it again. Considered baking
+  `/_sensitive` permanently into this repo's own tracked `.gitignore` instead, but
+  rejected it: a bare `/_sensitive` pattern would exclude the whole directory whenever
+  `_sensitive/` is still a plain folder (the default, pre-`link` state), breaking the
+  existing `_sensitive/*` + `!_sensitive/.gitkeep`/`!_sensitive/README.md` negation
+  exceptions that ship the folder with every fresh vault (git can't re-include a path
+  under an excluded parent directory).
+- Follow-up (`unlink` symmetry): since the rule now lives in the hidden `.git/info/exclude`,
+  `unlink` now removes the `/_sensitive` line it `link` added. Otherwise, restoring
+  `_sensitive/` to a plain directory would leave a `/_sensitive` line excluding the whole
+  folder — the exact negation-breakage above, just relocated to a file the user won't find
+  via `git status`. Verified with a `link`→`unlink` round-trip: `.gitkeep` is re-includable
+  after unlink.
+- Extended [[onedrive-sensitive-plane-setup-gotchas]] with this as gotcha 4.

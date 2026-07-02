@@ -263,10 +263,19 @@ RM
     c_ok "Untracked the old _sensitive/ placeholder files from git (notes were never tracked)."
   fi
   if inside_git; then
-    local gi="$VAULT_ROOT/.gitignore"
-    if [ -f "$gi" ] && ! grep -qxF "/_sensitive" "$gi"; then
-      printf '\n# Bare `_sensitive` symlink (cloud-backed Sensitive plane; see setup-sensitive-plane)\n/_sensitive\n' >> "$gi"
-      c_ok "Added /_sensitive to .gitignore (the symlink itself stays out of git)."
+    # Deliberately .git/info/exclude, NOT .gitignore: .gitignore is base-owned and
+    # gets wholesale-overlaid (checked out, no merge) by /update-base, so a line
+    # appended there is silently wiped on the next base pull. info/exclude lives
+    # inside .git/ — never tracked, never touched by any overlay of tracked
+    # files — so this survives every future /update-base run.
+    local ex; ex="$(git -C "$VAULT_ROOT" rev-parse --git-path info/exclude 2>/dev/null)"
+    if [ -n "$ex" ]; then
+      mkdir -p "$(dirname "$ex")"
+      [ -f "$ex" ] || : > "$ex"
+      if ! grep -qxF "/_sensitive" "$ex"; then
+        printf '\n# Bare `_sensitive` symlink (cloud-backed Sensitive plane; see setup-sensitive-plane).\n# Lives here, not .gitignore, because .gitignore is base-owned and gets wholesale\n# overlaid by /update-base -- a line added there would be silently wiped on the\n# next base pull. This file is git-local and never touched by any overlay.\n/_sensitive\n' >> "$ex"
+        c_ok "Excluded /_sensitive via .git/info/exclude (survives future /update-base pulls)."
+      fi
     fi
   fi
 
@@ -295,8 +304,36 @@ cmd_unlink() {
     shopt -u dotglob 2>/dev/null || true
   fi
   [ -f "$PLANE/.gitkeep" ] || : > "$PLANE/.gitkeep"
+
+  # Symmetric with `link`: drop the machine-local /_sensitive exclusion from
+  # .git/info/exclude. Now that _sensitive/ is a plain directory again, a lingering
+  # /_sensitive line would exclude the WHOLE directory and defeat the base
+  # .gitignore's `!_sensitive/.gitkeep` / `!_sensitive/README.md` re-includes (git
+  # can't re-include a path under an excluded parent), so the folder would stop
+  # shipping its placeholders. `link` writes this line, so `unlink` clears it —
+  # rather than leaving it for the user to hunt down in a hidden git-local file.
+  if inside_git; then
+    local ex; ex="$(git -C "$VAULT_ROOT" rev-parse --git-path info/exclude 2>/dev/null)"
+    if [ -n "$ex" ] && [ -f "$ex" ] && grep -qxF "/_sensitive" "$ex"; then
+      python3 - "$ex" <<'PY'
+import re, sys
+p = sys.argv[1]
+s = open(p, encoding="utf-8").read()
+# Remove the exact block `link` appends (leading blank line + comment + rule).
+block = "\n# Bare `_sensitive` symlink (cloud-backed Sensitive plane; see setup-sensitive-plane).\n# Lives here, not .gitignore, because .gitignore is base-owned and gets wholesale\n# overlaid by /update-base -- a line added there would be silently wiped on the\n# next base pull. This file is git-local and never touched by any overlay.\n/_sensitive\n"
+if block in s:
+    s = s.replace(block, "")
+else:
+    # Fallback: the comment was hand-edited — drop just the bare exclusion line.
+    s = re.sub(r"(?m)^/_sensitive$\n?", "", s)
+open(p, "w", encoding="utf-8").write(s)
+PY
+      c_ok "Removed /_sensitive from .git/info/exclude (plain _sensitive/ ships its .gitkeep/README again)."
+    fi
+  fi
+
   c_ok "_sensitive/ is now a plain local directory again (backing store at $target left intact)."
-  c_warn "Re-tracking placeholders / removing the /_sensitive gitignore line is left to you (review git status)."
+  c_warn "Re-tracking the _sensitive/ placeholders (.gitkeep / README.md) is left to you — 'git status' then 'git add' them if you want the folder to ship again."
 }
 
 # ---- verify ---------------------------------------------------------------
