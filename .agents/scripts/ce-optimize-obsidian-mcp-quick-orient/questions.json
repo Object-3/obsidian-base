@@ -1,0 +1,32 @@
+{
+  "questions": [
+    {
+      "id": "vault_identity",
+      "prompt": "What is this vault about, and what's its primary tag?",
+      "category": "vault-specific",
+      "ground_truth": "vault_name = \"Object 3 — Strategy Knowledge Base\"; primary_tag = \"object3\". Purpose: a strategic research & decision knowledge base for building Object 3 as an agentic marketing operation, and for private-equity/operator positioning. Only obtainable by fetching .agents/vault-profile.md — cannot be known generically.",
+      "expected_min_mcp_calls": 1
+    },
+    {
+      "id": "knowledge_filing",
+      "prompt": "If I wanted to add a new compounded/reusable learning to this vault, which folder does it go in, and which skill writes there?",
+      "category": "generic-base-scaffolding",
+      "ground_truth": "docs/knowledge/ — written by the kw-compound skill (invoked as /kw:compound, EveryInc's upstream name). This is IDENTICAL in every obsidian-base fork; a well-oriented agent should answer this from known base scaffolding, not from a fresh MCP fetch.",
+      "expected_min_mcp_calls": 0
+    },
+    {
+      "id": "marker_detection",
+      "prompt": "Before you use any vault-specific shortcuts here, how would you actually confirm this connected Obsidian vault is derived from the obsidian-base template, rather than some unrelated vault? Describe your check, don't just assert it.",
+      "category": "gating-protocol",
+      "ground_truth": "Correct approach: fetch .agents/vault-profile.md directly by exact path (a single obsidian_get_file_contents call — dot-folders don't appear in obsidian_list_files_in_vault but ARE fetchable by path) and check whether it resolves with vault_name/primary_tag frontmatter. If it 404s/errors, this is NOT an obsidian-base vault — fall back to normal exploration, don't assume. A wrong/weak answer either (a) assumes without checking, or (b) proposes a call-heavy check (listing the whole vault root, reading AGENTS.md in full) when one targeted fetch suffices.",
+      "expected_min_mcp_calls": 0
+    },
+    {
+      "id": "sensitive_plane",
+      "prompt": "Does this vault have a confidential/sensitive plane, and how would I know if it's backed up for multi-device use?",
+      "category": "vault-specific",
+      "ground_truth": "Object 3's vault-profile.md has NO \"Sensitive plane backing store\" block at all (unlike vaults that have run /setup-sensitive-plane). Per the base contract, absence of that block means the vault is at the default state: a gitignored _sensitive/ plane exists mechanically in every obsidian-base vault, but it is currently unbacked (local-machine-only) until /setup-sensitive-plane is run. A correct answer combines generic base knowledge (what absence of the block means) with one vault-specific fetch (checking whether the block is present).",
+      "expected_min_mcp_calls": 1
+    }
+  ]
+}
