@@ -263,10 +263,19 @@ RM
     c_ok "Untracked the old _sensitive/ placeholder files from git (notes were never tracked)."
   fi
   if inside_git; then
-    local gi="$VAULT_ROOT/.gitignore"
-    if [ -f "$gi" ] && ! grep -qxF "/_sensitive" "$gi"; then
-      printf '\n# Bare `_sensitive` symlink (cloud-backed Sensitive plane; see setup-sensitive-plane)\n/_sensitive\n' >> "$gi"
-      c_ok "Added /_sensitive to .gitignore (the symlink itself stays out of git)."
+    # Deliberately .git/info/exclude, NOT .gitignore: .gitignore is base-owned and
+    # gets wholesale-overlaid (checked out, no merge) by /update-base, so a line
+    # appended there is silently wiped on the next base pull. info/exclude lives
+    # inside .git/ — never tracked, never touched by any overlay of tracked
+    # files — so this survives every future /update-base run.
+    local ex; ex="$(git -C "$VAULT_ROOT" rev-parse --git-path info/exclude 2>/dev/null)"
+    if [ -n "$ex" ]; then
+      mkdir -p "$(dirname "$ex")"
+      [ -f "$ex" ] || : > "$ex"
+      if ! grep -qxF "/_sensitive" "$ex"; then
+        printf '\n# Bare `_sensitive` symlink (cloud-backed Sensitive plane; see setup-sensitive-plane).\n# Lives here, not .gitignore, because .gitignore is base-owned and gets wholesale\n# overlaid by /update-base -- a line added there would be silently wiped on the\n# next base pull. This file is git-local and never touched by any overlay.\n/_sensitive\n' >> "$ex"
+        c_ok "Excluded /_sensitive via .git/info/exclude (survives future /update-base pulls)."
+      fi
     fi
   fi
 

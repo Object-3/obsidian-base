@@ -10,10 +10,10 @@ related:
   - "[[ephemeral-fetch-remote-pattern]]"
 ---
 
-# Setting up `_sensitive/` on OneDrive: three recurring gotchas
+# Setting up `_sensitive/` on OneDrive: four recurring gotchas
 
 Backing a vault's `_sensitive/` plane with Microsoft 365 / OneDrive via
-`/setup-sensitive-plane` surfaced three friction points. None are blockers, but each
+`/setup-sensitive-plane` surfaced four friction points. None are blockers, but each
 cost real back-and-forth to diagnose the first time.
 
 **1. `brew install --cask onedrive` fails headlessly.** The `.pkg` installer needs
@@ -47,6 +47,17 @@ pointing at its own ancestor. **Fixed in the same change that added this note:**
 now scans the backing directory for any symlink resolving to an ancestor of itself and
 flags it.
 
+**4. `link`'s `.gitignore` addition for the bare `_sensitive` symlink got silently
+wiped by `/update-base`.** `link` used to append a `/_sensitive` line to the tracked
+`.gitignore` so the symlink itself stays out of git. But `.gitignore` is base-owned —
+`/update-base` overlays it wholesale (`git checkout FETCH_HEAD -- .gitignore`, no
+merge) — so that vault-specific line was silently gone on the next base pull, and
+`_sensitive` reappeared as an untracked path. Reproduced twice in a row: re-added the
+line by hand, ran `/update-base` again for an unrelated reason, and it was wiped again.
+**Fixed in the same change that added this note:** `link` now writes that exclusion to
+`.git/info/exclude` instead — git-local, never tracked, so no overlay of tracked files
+can ever touch it again.
+
 ## Context
 
 Setting up the Sensitive plane for a new topic vault: fresh OneDrive install (no prior
@@ -55,9 +66,12 @@ dedicated backing subfolder via `setup-sensitive-plane.sh link`.
 
 ## Implication
 
-For the next OneDrive-backed `/setup-sensitive-plane` run: expect all three. Hand off
+For the next OneDrive-backed `/setup-sensitive-plane` run: expect all four. Hand off
 the `brew` install rather than retrying it; default to the Files-On-Demand
 account-wide toggle instead of hunting for the Finder-extension right-click option
-unless the account holds other folders that shouldn't be pinned too; and run
+unless the account holds other folders that shouldn't be pinned too; run
 `setup-sensitive-plane.sh check` after linking and again after any GUI interaction with
-the OneDrive app — it now catches gotcha 3 automatically.
+the OneDrive app — it now catches gotcha 3 automatically; and gotcha 4 needs no action
+at all going forward — `link` already writes to the right place. A vault linked
+*before* this fix should manually move its `/_sensitive` line from `.gitignore` to
+`.git/info/exclude` once (as this session did for the vault that surfaced the bug).
