@@ -10,9 +10,10 @@
 # What it refreshes (base-owned engine only):
 #   AGENTS.md, CLAUDE.md, .gitignore, .gitattributes, .agents/SKILLS.md,
 #   .agents/skill-sources.json, .agents/scripts/*, .claude/hooks/*, .claude/settings.json,
-#   .githooks/*, setup/*, SETUP.md, the base-AUTHORED skills
-#   .agents/skills/{update-base,setup-vault,onboard,offboard,normalize-vault,install-skills,ingest-pdf,setup-sensitive-plane},
-#   and the one base-owned Obsidian snippet .obsidian/snippets/hide-engine-files.css
+#   .githooks/*, setup/*, SETUP.md, EVERY base-AUTHORED skill under .agents/skills/
+#   (auto-discovered from the fetched base tree — never a hand-kept list; see the
+#   "base-authored skills" derivation below), and the one base-owned Obsidian snippet
+#   .obsidian/snippets/hide-engine-files.css
 #
 # What it NEVER touches (yours):
 #   your notes, .agents/vault-profile.md, .agents/skill-sources.local.json, the VENDORED
@@ -46,16 +47,9 @@ PATHS=(
   ".claude/hooks"
   ".claude/settings.json"
   ".githooks"
-  # Base-AUTHORED skills (hand-written here, not vendored from an upstream), so
-  # improvements to them propagate. Vendored skills come via sync-skills, not here.
-  ".agents/skills/update-base"
-  ".agents/skills/setup-vault"
-  ".agents/skills/onboard"
-  ".agents/skills/offboard"
-  ".agents/skills/normalize-vault"
-  ".agents/skills/install-skills"
-  ".agents/skills/ingest-pdf"
-  ".agents/skills/setup-sensitive-plane"
+  # NOTE: base-AUTHORED skills under .agents/skills/ are deliberately NOT listed here.
+  # They're auto-discovered from the fetched base tree and appended to PATHS below
+  # (search "base-authored skills"), so adding a new base skill never needs an edit here.
   "setup"
   "SETUP.md"
   # The one base-owned Obsidian snippet: the rule for which engine files to hide from
@@ -71,6 +65,31 @@ else git remote add base "$BASE_REPO_URL"; fi
 echo "Fetching base layer from $BASE_REPO_URL @ $BASE_REF ..."
 git fetch -q --depth 1 base "$BASE_REF" || {
   echo "Could not fetch $BASE_REPO_URL @ $BASE_REF. Set BASE_REPO_URL / BASE_REF and retry." >&2; exit 1; }
+
+# base-authored skills — DERIVE them, don't hand-maintain a list.
+# A hardcoded list silently drifts every time a base skill is added (the add-vault /
+# install-mcp-quick-orient miss that motivated this). Instead we compute it from the
+# fetched base tree: a skill dir under .agents/skills/ that the base did NOT vendor —
+# i.e. is absent from the base's committed lock (.agents/skill-sources.lock.json's
+# .skills[]) — is base-authored, so it propagates. Vendored skills arrive via
+# sync-skills, never here; overlaying one could clobber a fork's pinned/overridden
+# copy, so we must not. Correctness rests on the base committing its lock alongside
+# its vendored skills (sync-skills always rewrites both together). If the lock is
+# missing/unparseable — or jq is absent — we can't tell authored from vendored, so we
+# skip skill overlay this run and warn, rather than risk clobbering a vendored skill.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "  ! jq not found; skipping base-authored skill sync this run (install jq — sync-skills needs it too)" >&2
+elif base_lock="$(git show FETCH_HEAD:.agents/skill-sources.lock.json 2>/dev/null)" \
+     && base_vendored="$(printf '%s' "$base_lock" | jq -r '.skills[]?' 2>/dev/null)"; then
+  while IFS= read -r skdir; do
+    [ -n "$skdir" ] && PATHS+=(".agents/skills/$skdir")
+  done < <(comm -23 \
+            <(git ls-tree -r --name-only FETCH_HEAD -- .agents/skills 2>/dev/null \
+                | sed -n 's#^\.agents/skills/\([^/]*\)/SKILL\.md$#\1#p' | sort -u) \
+            <(printf '%s\n' "$base_vendored" | sed '/^$/d' | sort -u))
+else
+  echo "  ! base has no readable/parseable .agents/skill-sources.lock.json; skipping base-authored skill sync this run" >&2
+fi
 
 # Warn about uncommitted local edits to base-owned files (they'll be overwritten).
 for p in "${PATHS[@]}"; do
