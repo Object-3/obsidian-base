@@ -123,7 +123,10 @@ LLM/agent can do**, and express each finding as ADD/UPDATE/DELETE/NOOP:
 - **Orphans** (no inbound links), **dead/broken `[[wikilinks]]`**, **stale claims**, and
   **missing concept pages / cross-references** — fix by adding links/backlinks or flagging a
   gap. Use **`/normalize-vault`** for any structural/frontmatter fixes to existing notes;
-  don't hand-roll them.
+  don't hand-roll them. This includes **`docs/knowledge/` learnings that `/kw:compound` left
+  without the vault's primary tag or any `[[link]]`** — they read as graph-orphans even though
+  search finds them; run `/normalize-vault`'s **graph-linking pass** to back-fill the primary
+  tag + ≥1 link, without otherwise touching their kw schema.
 
 `lint-vault.sh` stays frontmatter-only; this phase is the semantic layer on top.
 
