@@ -25,9 +25,12 @@ mass-rewrite, and don't bother normalizing throwaway scratch that isn't worth ke
    - *Single note* — the file you were pointed at, or the one you just encountered and
      got a yes on.
    - *Sweep* ("normalize the whole vault") — run `.agents/scripts/lint-vault.sh` for a
-     deterministic list of notes that miss the frontmatter standard (it already applies
-     the exclusions below). Then **show the user that list and confirm before editing.**
-     The linter only checks frontmatter — structure, voice, and linking are your call.
+     deterministic list. It reports **note-standard misses** in the note area (your
+     normalization target — the exclusions below already apply there) plus **invalid-YAML**
+     frontmatter anywhere it matters, *including* the own-schema dirs under *What NOT to
+     touch* (`docs/…`, `plans/`, the backbone) — broken YAML renders as raw text there
+     too. Then **show the user that list and confirm before editing.** The linter only
+     checks frontmatter — structure, voice, and linking are your call.
 
 3. **Confirm it's in scope.** If the file is really source material (a clipping,
    transcript, export), don't reformat it — suggest moving it to `raw/` instead, and
@@ -70,8 +73,9 @@ mass-rewrite, and don't bother normalizing throwaway scratch that isn't worth ke
 - Backbone files: `index.md`, `log.md`, `hot.md` — these are the navigation/history/recent-context
   spine (maintained by the operating rules and `/vault-dream`), not content notes; don't force the note schema onto them.
 - `docs/knowledge/`, `docs/solutions/`, `plans/` — these carry their **own**
-  frontmatter schema maintained by the `kw-*` skills; don't force the note schema onto
-  them.
+  frontmatter schema maintained by the `kw-*`/`ce-*` skills; don't force the note schema
+  onto them. (Exception: if `lint-vault.sh` flags one as *invalid YAML*, quoting the
+  offending value is a safe fix — it restores parseability without touching their schema.)
 - Non-note files such as Obsidian Bases (`*.base`).
 
 ## Notes
