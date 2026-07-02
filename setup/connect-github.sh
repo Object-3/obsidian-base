@@ -4,8 +4,7 @@
 # ===========================================================================
 # Optional, run anytime AFTER setup.sh. Creates a PRIVATE repo under your own
 # GitHub account OR an org you belong to, pushes your vault, and sets it as
-# 'origin' so Obsidian Git auto-syncs from then on. Your 'base' remote (for
-# /update-base) is left untouched. Idempotent.
+# 'origin' so Obsidian Git auto-syncs from then on. Idempotent.
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || { echo "Run this inside your vault folder." >&2; exit 1; }
@@ -45,9 +44,9 @@ fi
 # 4. 'origin' now exists, so it's safe to turn on Obsidian Git's auto-sync.
 #    setup.sh/add-vault.sh ship it OFF (autoSaveInterval/autoPullInterval 0,
 #    autoPullOnBoot/autoBackupAfterFileChange false, disablePush true) so a
-#    vault that only has the 'base' remote (added for /update-base) never
-#    auto-pushes — or prompts a user to pick 'base' as a sync target, which
-#    would push private vault content into the public template repo.
+#    vault with no 'origin' yet never auto-pushes. (The 'base' remote is no longer
+#    standing — /update-base adds it only per-fetch and removes it — so it can't be
+#    offered as an auto-sync target and leak private notes into the public template.)
 GIT_PLUGIN_DATA=".obsidian/plugins/obsidian-git/data.json"
 if [ -f "$GIT_PLUGIN_DATA" ] && have jq; then
   jq '.autoSaveInterval = 10 | .autoPullInterval = 10 | .autoPullOnBoot = true
@@ -57,4 +56,4 @@ if [ -f "$GIT_PLUGIN_DATA" ] && have jq; then
 fi
 
 printf '\n\033[1;32m✓ Backed up.\033[0m %s/%s — Obsidian Git will keep it synced.\n' "$OWNER" "$REPO_NAME"
-echo "Your 'base' remote (for .agents/scripts/update-base.sh) is unchanged."
+echo "Base updates still work: .agents/scripts/update-base.sh manages its own ephemeral remote."

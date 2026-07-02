@@ -3,7 +3,7 @@
 # ===========================================================================
 # Optional, run anytime AFTER setup.ps1 from inside your vault folder. Creates a
 # PRIVATE repo under your account OR an org you belong to, pushes, and sets it as
-# 'origin'. Your 'base' remote (for update-base) is left untouched. Idempotent.
+# 'origin'. Idempotent.
 $ErrorActionPreference = "Stop"
 function Have($c) { return [bool](Get-Command $c -ErrorAction SilentlyContinue) }
 function Say($m) { Write-Host "==> $m" -ForegroundColor Cyan }
@@ -33,10 +33,10 @@ if ($origin) {
 }
 
 # 'origin' now exists, so it's safe to turn on Obsidian Git's auto-sync.
-# setup.ps1 ships it OFF so a vault that only has the 'base' remote (added
-# for update-base) never auto-pushes, or prompts a user to pick 'base' as
-# a sync target -- which would push private vault content into the public
-# template repo.
+# setup.ps1 ships it OFF so a vault with no 'origin' yet never auto-pushes.
+# (The 'base' remote is no longer standing -- update-base.sh adds it only
+# per-fetch and removes it -- so it can't be offered as an auto-sync target
+# and leak private notes into the public template.)
 $gitPluginData = Join-Path $root ".obsidian\plugins\obsidian-git\data.json"
 if (Test-Path $gitPluginData) {
   $cfg = Get-Content $gitPluginData -Raw | ConvertFrom-Json
@@ -51,4 +51,4 @@ if (Test-Path $gitPluginData) {
 
 Write-Host ""
 Write-Host "Backed up: $Owner/$Repo - Obsidian Git will keep it synced." -ForegroundColor Green
-Write-Host "Your 'base' remote (for update-base) is unchanged."
+Write-Host "Base updates still work: update-base.sh manages its own ephemeral remote."

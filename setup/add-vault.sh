@@ -27,9 +27,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$ROOT/setup/lib.sh"
 
 # ---- config (env-overridable) --------------------------------------------
-# Clone the SAME base your current vault tracks (its `base` remote), so a new
-# vault inherits whatever base version you're on; fall back to the public base.
-BASE_REPO_URL="${BASE_REPO_URL:-$(git -C "$ROOT" remote get-url base 2>/dev/null || echo https://github.com/Object-3/obsidian-base.git)}"
+# Clone the SAME base your current vault tracks, so a new vault inherits whatever base
+# version you're on. The `base` git remote is no longer standing (see update-base.sh), so
+# read the persisted URL from .agents/.base-url; fall back to a legacy standing `base`
+# remote (older vaults), then the public base.
+BASE_REPO_URL="${BASE_REPO_URL:-$(
+  if [ -s "$ROOT/.agents/.base-url" ]; then tr -d '[:space:]' <"$ROOT/.agents/.base-url"
+  else git -C "$ROOT" remote get-url base 2>/dev/null || echo https://github.com/Object-3/obsidian-base.git
+  fi
+)}"
 # New vault lands beside the current one by default.
 VAULT_PARENT="${VAULT_PARENT:-$(dirname "$ROOT")}"
 VAULT_NAME="${VAULT_NAME:-}"                 # prompted if empty
@@ -66,10 +72,19 @@ say "Creating your new vault at $VAULT_DIR (from $BASE_REPO_URL)…"
 git clone --depth 1 "$BASE_REPO_URL" "$VAULT_DIR"
 cd "$VAULT_DIR"
 rm -rf .git                       # make it YOURS, not a clone of the base
+# No standing `base` git remote (see update-base.sh: it adds one ephemerally per fetch and
+# removes it, so `base` can't be mis-picked in Obsidian Git and push private notes to the
+# public template). Persist a NON-DEFAULT base URL so this vault's /update-base finds the
+# same fork/custom base; the public default needs nothing. Clear any .base-url the clone
+# source carried first, so the new vault's base is exactly what setup resolved — not a
+# stowaway inherited from the clone.
+rm -f .agents/.base-url
+if [ "$BASE_REPO_URL" != "https://github.com/Object-3/obsidian-base.git" ]; then
+  printf '%s\n' "$BASE_REPO_URL" > .agents/.base-url
+fi
 git init -q && git add -A
 git -c user.name="${GIT_AUTHOR_NAME:-Vault Owner}" -c user.email="${GIT_AUTHOR_EMAIL:-vault@localhost}" \
     commit -q -m "Initial vault from obsidian-base"
-git remote add base "$BASE_REPO_URL"
 git config core.hooksPath .githooks 2>/dev/null || true
 chmod +x .githooks/* .agents/scripts/*.sh setup/*.sh 2>/dev/null || true
 
