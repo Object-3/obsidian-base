@@ -26,7 +26,8 @@ MIN_SESSIONS=5
 # ISO-8601 -> epoch seconds, portable across GNU (date -d) and BSD/macOS (date -j -f).
 # GNU date -d is unavailable on macOS, so trying it alone would silently break the math.
 iso_to_epoch() {
-  local iso="$1" e
+  local iso e
+  iso=$(printf '%s' "$1" | tr -d '[:space:]')   # strip CR (CRLF from a Windows-synced vault) / stray whitespace
   [ -n "$iso" ] || { echo 0; return; }
   e=$(date -u -d "$iso" +%s 2>/dev/null)                         && { echo "$e"; return; }
   e=$(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$iso" +%s 2>/dev/null)  && { echo "$e"; return; }

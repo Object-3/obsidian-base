@@ -55,7 +55,10 @@ consolidated run). This is the spec for everything below.
 
 If `.agents/dream-state` is absent (a fork that predates this feature — `update-base` never
 overlays the per-vault watermark), create it seeded to *now* and proceed: the first dream
-then consolidates sessions going forward rather than scanning the entire history.
+then consolidates sessions going forward rather than scanning the entire history. **Write
+the timestamp in exactly the form the reader parses** — `date -u +%Y-%m-%dT%H:%M:%SZ` (a
+trailing `Z`, no offset, no fractional seconds) — so the scanner/nudge never silently
+desync from a different ISO-8601 variant.
 
 ### 2. Gather signal
 
@@ -133,7 +136,8 @@ LLM/agent can do**, and express each finding as ADD/UPDATE/DELETE/NOOP:
 - **Roll up / archive stale `log.md` entries** so the append-only log doesn't grow
   unbounded (summarize old runs into a rolled-up block), then append this run's line:
   `## [YYYY-MM-DD] dream | <one-line summary of the changeset>`.
-- **Bump `.agents/dream-state`** to now (ISO-8601) *as part of this changeset* — so the
+- **Bump `.agents/dream-state`** to now — `date -u +%Y-%m-%dT%H:%M:%SZ` (the exact form the
+  reader parses; see the seeding note in Phase 1) — *as part of this changeset*, so the
   watermark advances only when the PR is merged/applied. An abandoned PR leaves it untouched
   and those sessions are reconsidered next run.
 

@@ -45,16 +45,18 @@ STATE="${DREAM_STATE:-$ROOT/.agents/dream-state}"
 PROJECTS_DIR="${CLAUDE_PROJECTS_DIR:-$HOME/.claude/projects}"
 
 COUNT_ONLY=""; SCOPE=""; SINCE=""; EXTRACT=""
+# Each value-taking flag consumes its value with `shift 2`; if the value is missing (the
+# flag was the last arg), `shift 2` fails and we report a usage error (exit 2) instead of
+# letting `set -e` abort with a bare crash. No trailing shift, so there's no double-shift.
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --count)   COUNT_ONLY=1 ;;
-    --scope)   SCOPE="${2:-}"; shift ;;
-    --since)   SINCE="${2:-}"; shift ;;
-    --extract) EXTRACT="${2:-}"; shift ;;
-    -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
+    --count)   COUNT_ONLY=1; shift ;;
+    --scope)   SCOPE="${2:-}";   shift 2 2>/dev/null || { echo "dream-scan: --scope needs a value" >&2; exit 2; } ;;
+    --since)   SINCE="${2:-}";   shift 2 2>/dev/null || { echo "dream-scan: --since needs a value" >&2; exit 2; } ;;
+    --extract) EXTRACT="${2:-}"; shift 2 2>/dev/null || { echo "dream-scan: --extract needs a value" >&2; exit 2; } ;;
+    -h|--help) awk 'NR==1{next} /^#/{print;next} {exit}' "$0"; exit 0 ;;
     *) echo "dream-scan: unknown argument: $1" >&2; exit 2 ;;
   esac
-  shift
 done
 
 # --extract: compact, portable digest of ONE session JSONL. Handles both Claude Code
@@ -115,7 +117,8 @@ fi
 # Unparseable / empty -> 0, i.e. "never run" (everything counts as new). GNU date -d is
 # NOT available on macOS, so trying it alone would silently break the elapsed math there.
 iso_to_epoch() {
-  local iso="$1" e
+  local iso e
+  iso=$(printf '%s' "$1" | tr -d '[:space:]')   # strip CR (CRLF from a Windows-synced vault) / stray whitespace
   [ -n "$iso" ] || { echo 0; return; }
   e=$(date -u -d "$iso" +%s 2>/dev/null)                          && { echo "$e"; return; }
   e=$(date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$iso" +%s 2>/dev/null)   && { echo "$e"; return; }

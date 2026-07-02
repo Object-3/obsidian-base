@@ -57,11 +57,13 @@ sub "{{PRIMARY_TAG}}"   "$PRIMARY_TAG"
 echo
 echo "Profile set: name='$VAULT_NAME'  tag='$PRIMARY_TAG'  (see .agents/vault-profile.md)"
 
-# Seed the self-improvement backbone (the /vault-dream loop). The watermark baselines at
-# setup time so the first dream consolidates sessions from here forward (not the whole
-# history); hot.md — the recent-context cache agents read first — is created empty only if
-# absent, so re-running init never clobbers a populated cache.
-date -u +"%Y-%m-%dT%H:%M:%SZ" > "$ROOT/.agents/dream-state"
+# Seed the self-improvement backbone (the /vault-dream loop). BOTH are created only if
+# ABSENT, so re-running init on a live vault never resets an advanced watermark (which
+# otherwise advances only when the dream's PR merges) or clobbers a populated hot.md. A
+# fresh vault gets a baseline watermark; the first dream then consolidates from there.
+if [ ! -f "$ROOT/.agents/dream-state" ]; then
+  date -u +"%Y-%m-%dT%H:%M:%SZ" > "$ROOT/.agents/dream-state"
+fi
 if [ ! -s "$ROOT/hot.md" ]; then
   cat > "$ROOT/hot.md" <<'HOT'
 # Hot — recent context
