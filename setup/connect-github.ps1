@@ -31,6 +31,24 @@ if ($origin) {
   Say "Creating $Owner/$Repo ($Vis) and pushing..."
   gh repo create "$Owner/$Repo" --$Vis --source=. --remote=origin --push
 }
+
+# 'origin' now exists, so it's safe to turn on Obsidian Git's auto-sync.
+# setup.ps1 ships it OFF so a vault that only has the 'base' remote (added
+# for update-base) never auto-pushes, or prompts a user to pick 'base' as
+# a sync target -- which would push private vault content into the public
+# template repo.
+$gitPluginData = Join-Path $root ".obsidian\plugins\obsidian-git\data.json"
+if (Test-Path $gitPluginData) {
+  $cfg = Get-Content $gitPluginData -Raw | ConvertFrom-Json
+  $cfg.autoSaveInterval = 10
+  $cfg.autoPullInterval = 10
+  $cfg.autoPullOnBoot = $true
+  $cfg.autoBackupAfterFileChange = $true
+  $cfg.disablePush = $false
+  $cfg | ConvertTo-Json -Depth 10 | Set-Content $gitPluginData
+  Say "Enabled Obsidian Git auto-sync (commit + pull + push) now that 'origin' is connected."
+}
+
 Write-Host ""
 Write-Host "Backed up: $Owner/$Repo - Obsidian Git will keep it synced." -ForegroundColor Green
 Write-Host "Your 'base' remote (for update-base) is unchanged."
