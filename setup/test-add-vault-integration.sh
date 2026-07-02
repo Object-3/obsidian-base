@@ -40,6 +40,10 @@ export CLAUDE_DESKTOP_CONFIG="$SB/cd.json" CODEX_HOME="$SB/.codex" NO_OPEN=1 LIB
 BASE="$SB/base"
 mkdir -p "$BASE/setup" "$BASE/.agents/scripts" "$BASE/.obsidian/plugins/obsidian-local-rest-api" "$BASE/.githooks"
 cp "$REPO/setup/lib.sh" "$BASE/setup/lib.sh"
+# Ship the REAL update-base.sh in the base so the created vault can run it below (asserting
+# the ephemeral `base` remote leaves nothing standing).
+cp "$REPO/.agents/scripts/update-base.sh" "$BASE/.agents/scripts/update-base.sh"
+chmod +x "$BASE/.agents/scripts/update-base.sh"
 printf 'vault_name:  "{{VAULT_NAME}}"\n' > "$BASE/.agents/vault-profile.md"
 cat > "$BASE/.agents/scripts/init-vault.sh" <<'IV'
 #!/usr/bin/env bash
@@ -48,7 +52,8 @@ sed -i.bak "s/{{VAULT_NAME}}/${VAULT_NAME:-KB}/" "$ROOT/.agents/vault-profile.md
 IV
 chmod +x "$BASE/.agents/scripts/init-vault.sh"
 : > "$BASE/.obsidian/plugins/obsidian-local-rest-api/main.js"   # so data.json is written
-( cd "$BASE" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm base )
+# Pin the base's default branch to `main` — update-base.sh fetches BASE_REF (default main).
+( cd "$BASE" && git init -q && git add -A && git -c user.name=t -c user.email=t@t commit -qm base && git branch -M main )
 
 # ---- existing vault with a legacy mcp-obsidian connection ------------------
 EXIST="$SB/existing"
@@ -57,7 +62,10 @@ cp "$REPO/setup/lib.sh" "$REPO/setup/add-vault.sh" "$EXIST/setup/"; chmod +x "$E
 printf 'vault_name:  "Obsidian Strategy"\n' > "$EXIST/.agents/vault-profile.md"
 printf '{"port":27124,"insecurePort":27123}' > "$EXIST/.obsidian/plugins/obsidian-local-rest-api/data.json"
 printf 'strategyKey' > "$EXIST/.obsidian/.rest-api-key"
-( cd "$EXIST" && git init -q && git remote add base "file://$BASE" )
+# The existing vault tracks its base via .agents/.base-url (NOT a standing `base` remote):
+# add-vault inherits it from there.
+printf 'file://%s\n' "$BASE" > "$EXIST/.agents/.base-url"
+( cd "$EXIST" && git init -q )
 # seed the legacy connection across clients (runs under this bash process)
 # shellcheck disable=SC1091
 . "$REPO/setup/lib.sh"
@@ -65,7 +73,9 @@ for_each_client wire "mcp-obsidian" 27124 "strategyKey" >/dev/null 2>&1
 chk "seeded legacy mcp-obsidian (desktop)" "mcp_exists claude_desktop mcp-obsidian"
 
 echo "== run add-vault.sh for 'Obsidian Puma' =="
-VAULT_NAME="Obsidian Puma" PRIMARY_TAG=puma BASE_REPO_URL="file://$BASE" VAULT_PARENT="$SB" \
+# No BASE_REPO_URL env → add-vault must resolve the base from the existing vault's
+# .agents/.base-url (the inheritance path this test now exercises).
+VAULT_NAME="Obsidian Puma" PRIMARY_TAG=puma VAULT_PARENT="$SB" \
   bash "$EXIST/setup/add-vault.sh" --yes >/dev/null 2>&1
 
 echo "== assertions =="
@@ -81,7 +91,36 @@ chk "existing vault keeps port 27124"              "[ '$sport' = 27124 ]"
 chk "new vault got a distinct free port (27126)"   "[ '$pport' = 27126 ]"
 chk "new vault data.json port = 27126"             "[ \"\$(jq -r .port '$SB/obsidian-puma/.obsidian/plugins/obsidian-local-rest-api/data.json')\" = 27126 ]"
 chk "new vault personalized (name filled)"         "grep -q '\"Obsidian Puma\"' '$SB/obsidian-puma/.agents/vault-profile.md'"
-chk "new vault has its own base remote"            "git -C '$SB/obsidian-puma' remote get-url base >/dev/null 2>&1"
+# The `base` remote is ephemeral now: a fresh vault carries NO standing `base` remote and
+# instead resolves its base URL from the persisted .agents/.base-url it inherited.
+chk "new vault has NO standing base remote"        "! git -C '$SB/obsidian-puma' remote get-url base >/dev/null 2>&1"
+chk "new vault base URL persisted (.base-url)"     "grep -qF \"file://$BASE\" '$SB/obsidian-puma/.agents/.base-url'"
+
+echo "== run update-base.sh in the new vault (ephemeral remote must not persist) =="
+NEWV="$SB/obsidian-puma"
+# Seed a stray `base-ephemeral` as if a prior run was SIGKILLed mid-fetch: this run must
+# reclaim it at start and never leave one standing (crash orphan can't become permanent).
+git -C "$NEWV" remote add base-ephemeral "file://$BASE" 2>/dev/null || true
+if ( cd "$NEWV" && bash .agents/scripts/update-base.sh ) >/dev/null 2>&1; then ub_rc=0; else ub_rc=$?; fi
+chk "update-base.sh exited 0 (fetch really ran)"     "[ '$ub_rc' = 0 ]"
+chk "no standing 'base' remote after update-base"    "! git -C '$NEWV' remote get-url base >/dev/null 2>&1"
+chk "no standing 'base-ephemeral' after update-base" "! git -C '$NEWV' remote get-url base-ephemeral >/dev/null 2>&1"
+
+echo "== legacy vault with a standing 'base' remote: update-base KEEPS it, unchanged =="
+LEG="$SB/legacy"; cp -R "$NEWV" "$LEG"
+git -C "$LEG" remote remove base-ephemeral 2>/dev/null || true
+rm -f "$LEG/.agents/.base-url"                        # force URL resolution via the legacy remote
+git -C "$LEG" remote add base "file://$BASE"
+( cd "$LEG" && bash .agents/scripts/update-base.sh ) >/dev/null 2>&1 || true
+chk "legacy 'base' remote preserved after update-base" "git -C '$LEG' remote get-url base >/dev/null 2>&1"
+chk "legacy 'base' URL unchanged (not repointed)"      "[ \"\$(git -C '$LEG' remote get-url base)\" = \"file://$BASE\" ]"
+
+echo "== update-base.sh fetch FAILURE still cleans up the ephemeral remote (trap fires) =="
+FAILV="$SB/failv"; cp -R "$NEWV" "$FAILV"
+git -C "$FAILV" remote remove base-ephemeral 2>/dev/null || true
+if ( cd "$FAILV" && BASE_REPO_URL="file:///nonexistent-$$.git" bash .agents/scripts/update-base.sh ) >/dev/null 2>&1; then fub_rc=0; else fub_rc=$?; fi
+chk "update-base.sh fails on unreachable base (non-zero exit)"      "[ '$fub_rc' != 0 ]"
+chk "no standing 'base-ephemeral' after failed fetch (trap fired)"  "! git -C '$FAILV' remote get-url base-ephemeral >/dev/null 2>&1"
 
 echo
 if [ "$FAIL" -eq 0 ]; then printf '\033[1;32m✓ all %d checks passed\033[0m\n' "$PASS"; exit 0

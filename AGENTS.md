@@ -264,10 +264,12 @@ including ephemeral cloud containers that don't auto-install them.
   `.agents/scripts/sync-skills.sh`. The base's curated list lives in
   `.agents/skill-sources.json` (base-owned); the sync **merges both**.
 - **Get base improvements:** run `.agents/scripts/update-base.sh` (or the
-  `/update-base` skill). It's **git-native** — it fetches a `base` git remote and
-  overlays only the base-owned engine paths (including the curated
-  `skill-sources.json`), leaving your notes, `vault-profile.md`, and
-  `skill-sources.local.json` untouched. Then run `sync-skills.sh`.
+  `/update-base` skill). It's **git-native** — it fetches from the base repo via an
+  **ephemeral** `base` git remote (added for the fetch, then removed, so nothing standing
+  can be mis-picked in Obsidian Git and push private notes to the public template) and
+  overlays only the base-owned engine paths (including the curated `skill-sources.json`),
+  leaving your notes, `vault-profile.md`, and `skill-sources.local.json` untouched. A
+  fork/custom base URL is remembered in `.agents/.base-url`. Then run `sync-skills.sh`.
 - Full mechanism: [`.agents/SKILLS.md`](.agents/SKILLS.md).
 
 ### Where skills read & write (knowledge planes)
@@ -285,7 +287,9 @@ keep them apart so nothing collides and every agent knows where to look:
   directory**, so even when installed globally their output stays in *whatever repo you
   run them in* — engineering learnings correctly land in that code repo, not here.
   **Don't run CE knowledge-writing skills inside the vault:** they'd scatter a second,
-  schema-incompatible store that pollutes the Obsidian graph and fails `lint-vault.sh`.
+  schema-incompatible store that pollutes the Obsidian graph. (`lint-vault.sh` will
+  confirm those files parse as valid YAML, but it deliberately doesn't hold `docs/` to
+  the vault note schema, so it won't flag them as intruders — the graph is the tell.)
 - **One copy, EveryInc's name.** The `kw-*` skills are vendored verbatim from EveryInc's
   `compound-knowledge` plugin. Their registered `name:` is `kw:compound` (the colon is
   EveryInc's; the folder is `kw-compound`) — invoke the **upstream name, `/kw:compound`**, and

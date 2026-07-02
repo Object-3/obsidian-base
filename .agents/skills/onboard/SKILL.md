@@ -41,7 +41,10 @@ skill — it's the same profile step and is safe to run anytime.
 
 ## 2. Verify — and fix what's broken (use tools)
 Check each; if a check fails, investigate and repair, then re-check:
-- **Vault exists** and is its own git repo with a `base` remote (`git -C <vault> remote -v`).
+- **Vault exists** and is its own git repo (`git -C <vault> rev-parse --is-inside-work-tree`).
+  By design there is **no** standing `base` remote — `/update-base` adds one only for the
+  fetch and removes it; a fork/custom base URL is persisted in `.agents/.base-url`. Don't
+  "repair" a missing `base` remote by re-adding one.
 - **Skills synced**: `.agents/skills/INDEX.md` lists ~60 skills; pointers resolve.
 - **Plugins present**: `.obsidian/plugins/obsidian-git/main.js` and
   `obsidian-local-rest-api/main.js` exist; both listed in `community-plugins.json`.
@@ -102,7 +105,8 @@ Then confirm the agent can list files in the vault via the Obsidian MCP.
 
 ## Notes
 - **Local-first**: everything works with no GitHub account. `update-base` pulls engine
-  updates from the public base remote without auth.
+  updates from the public base repo without auth (via an ephemeral `base` remote it adds
+  for the fetch and then removes).
 - **Don't make non-technical users think in repos.** Their mental model is simply
   *"I write in Obsidian; my agents can read it and, with my OK, add to it."* Obsidian
   Git syncs underneath; the MCP is how agents reach in. Never tell them to `cd` into a

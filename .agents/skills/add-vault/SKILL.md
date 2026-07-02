@@ -27,7 +27,8 @@ reachable in the same assistant session.
    VAULT_NAME="Obsidian Puma" PRIMARY_TAG="puma" ./setup/add-vault.sh --yes
    ```
    It: (a) on first run, migrates the existing vault's legacy `mcp-obsidian` connection
-   to its own vault name; (b) clones the base (from the vault's own `base` remote) into a
+   to its own vault name; (b) clones the base (from the base your vault tracks, resolved via
+   `.agents/.base-url`, or the public template by default) into a
    sibling folder; (c) personalizes it via `init-vault.sh`; (d) provisions the Obsidian
    plugins on an **auto-allocated free port** with a fresh key; (e) **appends** a
    vault-named MCP server into every installed client. Env overrides mirror `setup.sh`

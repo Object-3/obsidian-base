@@ -3,7 +3,7 @@
 # WITHOUT touching your notes, vault-profile, or content.
 #
 # GIT-NATIVE: every vault is already a git repo (Obsidian Git needs one), so we use a
-# `base` git remote instead of downloading tarballs. That makes this host-agnostic
+# short-lived git remote instead of downloading tarballs. That makes this host-agnostic
 # (any git URL, not just GitHub), pinnable to a tag/SHA, and able to prune files the
 # base removed. It overlays ONLY the base-owned engine paths below.
 #
@@ -24,14 +24,34 @@
 #   plans/, raw/, and all of .obsidian/ EXCEPT the single base-owned snippet above (your own
 #   snippets, workspace, graph, appearance, and which snippets you've enabled all stay yours)
 #
-# Config (override via env, or pin persistently in .agents/.base-ref):
+# Config (override via env, or pin persistently in .agents/.base-{url,ref}):
 #   BASE_REPO=Object-3/obsidian-base                  # owner/name (GitHub shorthand)
 #   BASE_REPO_URL=https://github.com/Object-3/obsidian-base.git   # full URL (any host)
 #   BASE_REF=main | v1.2.0 | <sha>                    # branch, tag, or commit to pull
+#   .agents/.base-url                                 # persisted base URL (fork/custom base)
+#
+# The fetch remote is EPHEMERAL: this script adds a dedicated `base-ephemeral` remote only for
+# the fetch and removes it on exit (see below) — it never touches a `base` remote you keep.
+# Nothing base-related is left standing, so a fork's/custom base's URL is remembered in the
+# tracked .agents/.base-url file instead (written by setup only when a non-default URL is used).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT"
 
-BASE_REPO_URL="${BASE_REPO_URL:-https://github.com/${BASE_REPO:-Object-3/obsidian-base}.git}"
+# Base repo URL precedence: BASE_REPO_URL env → BASE_REPO env (owner/name shorthand)
+# → persisted .agents/.base-url → an already-configured `base` remote (legacy vaults that
+# still keep a standing one) → public template. This is what lets a fork/custom base survive
+# now that the `base` remote is ephemeral rather than standing.
+if [ -n "${BASE_REPO_URL:-}" ]; then
+  :
+elif [ -n "${BASE_REPO:-}" ]; then
+  BASE_REPO_URL="https://github.com/${BASE_REPO}.git"
+elif [ -s .agents/.base-url ] && BASE_REPO_URL="$(tr -d '[:space:]' <.agents/.base-url)" && [ -n "$BASE_REPO_URL" ]; then
+  :   # persisted fork/custom base URL (a blank/whitespace-only file falls through)
+elif BASE_REPO_URL="$(git remote get-url base 2>/dev/null)" && [ -n "$BASE_REPO_URL" ]; then
+  :   # legacy vault with a standing `base` remote — honor its URL
+else
+  BASE_REPO_URL="https://github.com/Object-3/obsidian-base.git"
+fi
 BASE_REF="${BASE_REF:-$( [ -f .agents/.base-ref ] && tr -d '[:space:]' <.agents/.base-ref || echo main )}"
 
 command -v git >/dev/null || { echo "git is required" >&2; exit 1; }
@@ -62,11 +82,24 @@ PATHS=(
   ".obsidian/snippets/hide-engine-files.css"
 )
 
-# Wire up / refresh the `base` remote, then fetch just the wanted ref (shallow).
-if git remote get-url base >/dev/null 2>&1; then git remote set-url base "$BASE_REPO_URL"
-else git remote add base "$BASE_REPO_URL"; fi
+# The fetch remote is EPHEMERAL. /update-base needs a remote to fetch from, but leaving one
+# STANDING is a footgun: once `origin` exists a user could pick it in Obsidian Git's remote
+# picker and push PRIVATE vault content into the (public) template repo. So we use a DEDICATED
+# name this script owns end to end — `base-ephemeral` — never the bare `base`:
+#   * any stray `base-ephemeral` from a crashed/SIGKILLed prior run is reclaimed at the START
+#     of every run, so a hard-kill orphan can never be silently promoted to a permanent remote;
+#   * it's added only for this fetch; and
+#   * the trap removes it on exit (normal exit, `set -e` error, and SIGINT/SIGTERM).
+# A user's or legacy vault's own `base` remote is NEVER added, removed, or repointed here — its
+# URL is only READ for the precedence chain above — so we can't clobber a remote someone kept.
+# (`base-ephemeral` is a reserved name this script owns; don't use it for your own remote.)
+EPHEMERAL_REMOTE="base-ephemeral"
+cleanup_base_remote() { git remote remove "$EPHEMERAL_REMOTE" 2>/dev/null || true; }
+trap cleanup_base_remote EXIT
+git remote remove "$EPHEMERAL_REMOTE" 2>/dev/null || true   # reclaim a crash/SIGKILL orphan
+git remote add "$EPHEMERAL_REMOTE" "$BASE_REPO_URL"
 echo "Fetching base layer from $BASE_REPO_URL @ $BASE_REF ..."
-git fetch -q --depth 1 base "$BASE_REF" || {
+git fetch -q --depth 1 "$EPHEMERAL_REMOTE" "$BASE_REF" || {
   echo "Could not fetch $BASE_REPO_URL @ $BASE_REF. Set BASE_REPO_URL / BASE_REF and retry." >&2; exit 1; }
 
 # base-authored skills — DERIVE them, don't hand-maintain a list.
@@ -136,7 +169,7 @@ else
     echo "  2. This is an ENGINE change — commit on a branch and open a PR (don't let the"
     echo "     live auto-syncing vault sweep a half-applied engine update onto main)."
   else
-    echo "  2. No 'origin' remote yet (only 'base') — there's nothing to open a PR against."
+    echo "  2. No 'origin' remote yet — there's nothing to open a PR against."
     echo "     Commit directly: git add -A && git commit -m 'Update base layer from obsidian-base'."
     echo "     (Once you connect GitHub with connect-github.sh, future updates can go through"
     echo "     a branch + PR if you want that review step.)"

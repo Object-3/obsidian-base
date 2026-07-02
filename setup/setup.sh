@@ -90,11 +90,19 @@ create_vault() {
   git clone --depth 1 "$BASE_REPO_URL" "$VAULT_DIR"
   cd "$VAULT_DIR"
   rm -rf .git                       # make it YOURS, not a clone of the base
+  # Deliberately NO standing `base` git remote: /update-base adds one ephemerally per fetch
+  # and removes it, so `base` can never be mis-picked in Obsidian Git's remote picker and
+  # push private notes into the (public) template. Persist a NON-DEFAULT base URL so
+  # /update-base still targets a fork/custom base; the public default needs nothing. Clear any
+  # .base-url the clone source carried first, so the base is exactly what setup resolved.
+  rm -f .agents/.base-url
+  if [ "$BASE_REPO_URL" != "https://github.com/Object-3/obsidian-base.git" ]; then
+    printf '%s\n' "$BASE_REPO_URL" > .agents/.base-url
+  fi
   git init -q -b main               # explicit -b main: don't inherit the machine's init.defaultBranch
-  git remote add base "$BASE_REPO_URL"   # for /update-base (public; no auth needed)
   git config core.hooksPath .githooks 2>/dev/null || true
   chmod +x .githooks/* .agents/scripts/*.sh 2>/dev/null || true
-  say "Vault is a fresh LOCAL git repo on 'main'. 'base' remote set for future updates."
+  say "Vault is a fresh LOCAL git repo on 'main'. Run /update-base anytime to pull base improvements."
 }
 
 # ---- 3. fill profile + sync skills, THEN make the first commit -----------
