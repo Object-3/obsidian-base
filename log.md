@@ -92,3 +92,22 @@ lint passes. Newest at the bottom. Prefix entries with `## [YYYY-MM-DD] <type> |
   via `git status`. Verified with a `link`→`unlink` round-trip: `.gitkeep` is re-includable
   after unlink.
 - Extended [[onedrive-sensitive-plane-setup-gotchas]] with this as gotcha 4.
+
+## [2026-07-02] feat | `connect-github` skill + naming parity + push resilience
+- New skill `connect-github`: owns the judgment `connect-github.sh`/`.ps1` can't --
+  owner selection (personal vs. a dedicated org, especially for confidential/deal-specific
+  vaults; don't default to an unrelated existing org), repo naming, and visibility.
+  Pointed to from `add-vault` and `onboard`'s optional-next-steps.
+- `connect-github.sh`: sources `lib.sh` and now defaults the repo name to the vault's MCP
+  label (`obsidian-<slug>` via `lib_mcp_label`) instead of the bare folder name, so the
+  GitHub repo and the assistant-facing connection name match without a manual rename
+  after the fact. (`connect-github.ps1` unchanged here -- Windows has no per-vault MCP
+  label yet, since `add-vault.ps1`/multi-vault isn't ported there.)
+- `connect-github.sh`/`.ps1`: retry a failed push once over HTTP/1.1 with a larger post
+  buffer before giving up. Found for real: `RPC failed; HTTP 400 ... unexpected
+  disconnect while reading sideband packet` on an otherwise-tiny (3.7MB) repo -- a known
+  HTTP/2 flakiness pattern, not a size issue. Under `set -euo pipefail`, that failure used
+  to abort the script before it reached the auto-sync re-enable step, leaving the vault
+  half-configured (origin connected via a manual retry outside the script, but auto-sync
+  still off).
+- New learning [[connect-github-naming-parity-and-push-resilience]].

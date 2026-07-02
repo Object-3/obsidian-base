@@ -43,7 +43,8 @@ reachable in the same assistant session.
    - They must **start a fresh assistant session** (quit/reopen Claude Desktop, or a new
      Claude Code / Codex session) for the new connection to load.
    - To confirm: ask the assistant to **"list the files in `obsidian-<slug>`."**
-   - Optional cloud backup for the new vault anytime: `cd <path> && ./setup/connect-github.sh`.
+   - Optional cloud backup for the new vault anytime: the **`connect-github`** skill
+     (or `cd <path> && ./setup/connect-github.sh` directly).
 
 ## Notes
 
