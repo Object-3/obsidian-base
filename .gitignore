@@ -49,10 +49,18 @@ _local/*
 .playwright-mcp/
 .playwright/
 
+# --- Agent scratch space (Conductor workspaces; ce-*/kw-* skill working state) ---
+# .context/ is where ce-plan, ce-brainstorm, ce-optimize, etc. write local scratch
+# (specs, experiment logs, measurement harnesses) — never a durable deliverable.
+# Previously this was only excluded via this machine's local .git/info/exclude, which
+# isn't part of the repo, so any other clone/fork had zero protection. Track the
+# ignore here so the guarantee holds for everyone, not just this machine.
+.context/
+
 # --- ce-optimize scratch artifacts (compound-engineering skill) ---
-# The ce-optimize skill's own contract keeps experiment scratch state (measurement
-# harnesses, eval questions, baseline snapshots) under .context/compound-engineering/
-# ce-optimize/<spec-name>/, which is local-only and never meant to be committed. If that
+# Belt-and-suspenders for the .context/ rule above: the ce-optimize skill's contract
+# keeps experiment scratch state (measurement harnesses, eval questions, baseline
+# snapshots) under .context/compound-engineering/ce-optimize/<spec-name>/. If that
 # scratch ever gets copied into the tracked tree instead of .context/ (as happened once
 # under .agents/scripts/ce-optimize-obsidian-mcp-quick-orient/), keep it out of git
 # regardless of where it lands — match the skill's own <spec-name> naming convention.
