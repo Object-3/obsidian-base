@@ -76,6 +76,10 @@ install_prereqs() {
 }
 
 # ---- 2. create the local vault from the base template ---------------------
+# Deliberately does NOT commit yet — the base template's placeholder files
+# ({{VAULT_NAME}} etc.) would become the vault's first commit. configure_vault
+# (next) personalizes first, THEN makes the one initial commit, so vault
+# history starts with real values, not template tokens.
 create_vault() {
   ask VAULT_NAME "Name your knowledge vault" "My Knowledge Base"
   local slug; slug="$(printf '%s' "$VAULT_NAME" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-')"
@@ -86,16 +90,17 @@ create_vault() {
   git clone --depth 1 "$BASE_REPO_URL" "$VAULT_DIR"
   cd "$VAULT_DIR"
   rm -rf .git                       # make it YOURS, not a clone of the base
-  git init -q && git add -A
-  git -c user.name="${GIT_AUTHOR_NAME:-Vault Owner}" -c user.email="${GIT_AUTHOR_EMAIL:-vault@localhost}" \
-      commit -q -m "Initial vault from obsidian-base"
+  git init -q -b main               # explicit -b main: don't inherit the machine's init.defaultBranch
   git remote add base "$BASE_REPO_URL"   # for /update-base (public; no auth needed)
   git config core.hooksPath .githooks 2>/dev/null || true
   chmod +x .githooks/* .agents/scripts/*.sh 2>/dev/null || true
-  say "Vault is a fresh LOCAL git repo. 'base' remote set for future updates."
+  say "Vault is a fresh LOCAL git repo on 'main'. 'base' remote set for future updates."
 }
 
-# ---- 3. fill profile + sync skills ---------------------------------------
+# ---- 3. fill profile + sync skills, THEN make the first commit -----------
+# Personalizing before committing means the vault's git history starts with
+# real values (name/tagline/tag), not the base template's {{PLACEHOLDER}}
+# tokens — those would otherwise sit uncommitted on disk indefinitely.
 configure_vault() {
   cd "$VAULT_DIR"
   if [ -n "$ASSUME_YES" ]; then
@@ -103,6 +108,9 @@ configure_vault() {
   else
     .agents/scripts/init-vault.sh || warn "init-vault skipped (run it later)"
   fi
+  git add -A
+  git -c user.name="${GIT_AUTHOR_NAME:-Vault Owner}" -c user.email="${GIT_AUTHOR_EMAIL:-vault@localhost}" \
+      commit -q -m "Initial vault from obsidian-base"
 }
 
 # ---- 3b. (optional) mirror skills into user-scope ------------------------

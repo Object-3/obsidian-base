@@ -54,6 +54,10 @@ have jq  || die "jq is required."
 lib_migrate_legacy_mcp "$ROOT" || warn "legacy migration skipped"
 
 # ---- 2. create the new vault from the base --------------------------------
+# Deliberately does NOT commit yet — step 3 personalizes first, THEN makes
+# the one initial commit, so vault history starts with real values, not the
+# base template's {{PLACEHOLDER}} tokens (which would otherwise sit
+# uncommitted on disk indefinitely).
 ask VAULT_NAME "Name your new vault" "My Second Vault"
 slug="$(lib_slugify "$VAULT_NAME")"
 [ -n "$slug" ] || die "could not derive a folder name from '$VAULT_NAME'."
@@ -66,19 +70,20 @@ say "Creating your new vault at $VAULT_DIR (from $BASE_REPO_URL)…"
 git clone --depth 1 "$BASE_REPO_URL" "$VAULT_DIR"
 cd "$VAULT_DIR"
 rm -rf .git                       # make it YOURS, not a clone of the base
-git init -q && git add -A
-git -c user.name="${GIT_AUTHOR_NAME:-Vault Owner}" -c user.email="${GIT_AUTHOR_EMAIL:-vault@localhost}" \
-    commit -q -m "Initial vault from obsidian-base"
+git init -q -b main               # explicit -b main: don't inherit the machine's init.defaultBranch
 git remote add base "$BASE_REPO_URL"
 git config core.hooksPath .githooks 2>/dev/null || true
 chmod +x .githooks/* .agents/scripts/*.sh setup/*.sh 2>/dev/null || true
 
-# ---- 3. personalize -------------------------------------------------------
+# ---- 3. personalize, THEN make the first commit ---------------------------
 if [ -n "$ASSUME_YES" ]; then
   VAULT_NAME="$VAULT_NAME" PRIMARY_TAG="${PRIMARY_TAG:-kb}" .agents/scripts/init-vault.sh --yes || warn "init-vault skipped"
 else
   .agents/scripts/init-vault.sh || warn "init-vault skipped (run it later)"
 fi
+git add -A
+git -c user.name="${GIT_AUTHOR_NAME:-Vault Owner}" -c user.email="${GIT_AUTHOR_EMAIL:-vault@localhost}" \
+    commit -q -m "Initial vault from obsidian-base"
 
 # ---- 4. provision plugins on a fresh free port ----------------------------
 have uv || warn "uv not found — the MCP runtime (uvx mcp-obsidian) may not start."

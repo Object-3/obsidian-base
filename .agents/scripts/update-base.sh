@@ -132,8 +132,15 @@ else
   echo "Updated $changed path(s), pruned $pruned file(s). Changes are STAGED, not committed."
   echo "Next:"
   echo "  1. Run '.agents/scripts/sync-skills.sh' (skill-sources.json may have changed)."
-  echo "  2. This is an ENGINE change — commit on a branch and open a PR (don't let the"
-  echo "     live auto-syncing vault sweep a half-applied engine update onto main)."
+  if git remote get-url origin >/dev/null 2>&1; then
+    echo "  2. This is an ENGINE change — commit on a branch and open a PR (don't let the"
+    echo "     live auto-syncing vault sweep a half-applied engine update onto main)."
+  else
+    echo "  2. No 'origin' remote yet (only 'base') — there's nothing to open a PR against."
+    echo "     Commit directly: git add -A && git commit -m 'Update base layer from obsidian-base'."
+    echo "     (Once you connect GitHub with connect-github.sh, future updates can go through"
+    echo "     a branch + PR if you want that review step.)"
+  fi
   echo "Note: your '.agents/skill-sources.local.json' (custom sources) was NOT touched."
 fi
 

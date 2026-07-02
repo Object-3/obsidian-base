@@ -33,3 +33,19 @@ lint passes. Newest at the bottom. Prefix entries with `## [YYYY-MM-DD] <type> |
   vendored dash-form `kw-*` are the single invocation — kills the `kw:` / `compound-knowledge:`
   menu duplicate. Documented the two knowledge planes (`kw-*` vs `ce-*`) in `AGENTS.md`.
   See [[kw-and-ce-knowledge-planes]].
+
+## [2026-07-02] fix | Vault-creation hygiene + Sensitive-plane symlink check
+- `setup.sh`/`add-vault.sh`: personalize (`init-vault.sh`) *before* the initial commit,
+  not after — a new vault's history now starts with real values instead of
+  `{{PLACEHOLDER}}` tokens. `git init -b main` explicitly, instead of inheriting the
+  machine's `init.defaultBranch`. See [[fresh-vault-uncommitted-personalization-and-branch-drift]].
+- `update-base.sh`: "Next steps" messaging is now origin-aware — only recommends
+  branch+PR when `origin` exists; says "commit directly" for a vault that only has the
+  `base` remote.
+- `setup-sensitive-plane.sh check`: now scans the backing directory for symlinks that
+  resolve to an ancestor of themselves (e.g. a stray shortcut back to a cloud
+  provider's account root) and flags them — previously undetected. Doc updated with the
+  Files-On-Demand account-wide-toggle fallback and a note that `brew install --cask`
+  needs a human hand-off headlessly. See [[onedrive-sensitive-plane-setup-gotchas]].
+- All three found while setting up a second topic vault end to end (`/add-vault` →
+  `/update-base` → `/setup-sensitive-plane`) in a downstream vault.
