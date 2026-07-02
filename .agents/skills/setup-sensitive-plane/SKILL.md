@@ -69,6 +69,12 @@ provider from step 1; it may prompt for their password or an OS approval):
 | **Google Drive** | `brew install --cask google-drive` | `winget install -e --id Google.GoogleDrive` |
 | **OneDrive** | `brew install --cask onedrive` | `winget install -e --id Microsoft.OneDrive` |
 
+⚠️ **Headless/agent shell:** `brew install --cask` runs a `.pkg` installer under `sudo`,
+which needs an interactive password — it fails with `sudo: a password is required` when
+run non-interactively. Don't retry it programmatically; hand off immediately and ask the
+user to run the command themselves in their own Terminal, or use the official-source
+path below instead.
+
 No package manager? Send them to the **official source** (say so explicitly — they're about to
 install software and should feel safe it's the real thing):
 - **Google Drive for desktop** → <https://www.google.com/drive/download/> (the `GoogleDrive.dmg` /
@@ -92,6 +98,14 @@ memorized click-path:
 - **OneDrive:** right-click the backing folder → **Always keep on this device** (Files On-Demand;
   it's a per-device setting). ([Windows](https://support.microsoft.com/en-us/office/save-disk-space-with-onedrive-files-on-demand-for-windows-0e6860d3-d9f3-4971-b321-7092438fb38e) ·
   [Mac](https://support.microsoft.com/en-us/office/save-disk-space-with-onedrive-files-on-demand-for-mac-529f6d53-e572-4922-a585-e7a318c135f0))
+  ⚠️ On macOS, that right-click option only appears once OneDrive's **Finder Sync
+  Extension** is enabled (**System Settings → General → Login Items & Extensions →
+  Extensions**, or **Privacy & Security → Extensions → Added Extensions** on some
+  versions) — it's off by default post-install, so the context menu shows only generic
+  Finder items until then. A simpler fallback that needs no extension: OneDrive's own
+  **Preferences → General → Files On-Demand → "Download all OneDrive files now"** pins
+  everything in the account at once — the easier path when the account only holds one
+  small dedicated backing folder.
 
 If a label has moved, look it up in that provider's help center in-session rather than guessing —
 then let `verify` / `check` (step 2) be the proof it worked, not the menu wording.
@@ -113,7 +127,10 @@ Pick a backing folder **inside the cloud root** (e.g. `~/Library/CloudStorage/Go
   2. **One sync engine** on this path (the cloud client only — not Obsidian Sync/Git too).
   3. **Never sync `.obsidian/`**; sync only the `_sensitive/` subtree.
 - **Verify:** `setup-sensitive-plane verify` (probe note round-trips) and
-  `setup-sensitive-plane check` (the non-negotiables checkable locally).
+  `setup-sensitive-plane check` (the non-negotiables checkable locally, including a scan
+  for self-referential symlinks inside the backing dir — e.g. a stray shortcut back to
+  the cloud account's own root, which has appeared unexplained in practice and can cause
+  provider sync loops/errors).
 
 ## 3. Wire headless agent read (optional — for remote/automation)
 

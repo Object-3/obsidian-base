@@ -60,6 +60,10 @@ have jq  || die "jq is required."
 lib_migrate_legacy_mcp "$ROOT" || warn "legacy migration skipped"
 
 # ---- 2. create the new vault from the base --------------------------------
+# Deliberately does NOT commit yet — step 3 personalizes first, THEN makes
+# the one initial commit, so vault history starts with real values, not the
+# base template's {{PLACEHOLDER}} tokens (which would otherwise sit
+# uncommitted on disk indefinitely).
 ask VAULT_NAME "Name your new vault" "My Second Vault"
 slug="$(lib_slugify "$VAULT_NAME")"
 [ -n "$slug" ] || die "could not derive a folder name from '$VAULT_NAME'."
@@ -82,18 +86,26 @@ rm -f .agents/.base-url
 if [ "$BASE_REPO_URL" != "https://github.com/Object-3/obsidian-base.git" ]; then
   printf '%s\n' "$BASE_REPO_URL" > .agents/.base-url
 fi
-git init -q && git add -A
-git -c user.name="${GIT_AUTHOR_NAME:-Vault Owner}" -c user.email="${GIT_AUTHOR_EMAIL:-vault@localhost}" \
-    commit -q -m "Initial vault from obsidian-base"
+git init -q -b main 2>/dev/null \
+  || { git init -q && git symbolic-ref HEAD refs/heads/main; }   # explicit main; fall back for git < 2.28
 git config core.hooksPath .githooks 2>/dev/null || true
 chmod +x .githooks/* .agents/scripts/*.sh setup/*.sh 2>/dev/null || true
 
-# ---- 3. personalize -------------------------------------------------------
+# ---- 3. personalize, THEN make the first commit ---------------------------
 if [ -n "$ASSUME_YES" ]; then
   VAULT_NAME="$VAULT_NAME" PRIMARY_TAG="${PRIMARY_TAG:-kb}" .agents/scripts/init-vault.sh --yes || warn "init-vault skipped"
 else
   .agents/scripts/init-vault.sh || warn "init-vault skipped (run it later)"
 fi
+# Guard: if personalization left {{PLACEHOLDER}} tokens behind (init-vault failed or was
+# skipped), don't silently commit template tokens as the vault's first commit and report
+# success — surface it so the user re-runs init-vault instead of trusting a false "Done".
+if grep -lq '{{[A-Z_]*}}' .agents/vault-profile.md index.md log.md llms.txt README.md 2>/dev/null; then
+  warn "vault still has {{PLACEHOLDER}} tokens — personalization didn't complete; re-run '.agents/scripts/init-vault.sh', then commit again."
+fi
+git add -A
+git -c user.name="${GIT_AUTHOR_NAME:-Vault Owner}" -c user.email="${GIT_AUTHOR_EMAIL:-vault@localhost}" \
+    commit -q -m "Initial vault from obsidian-base"
 
 # ---- 4. provision plugins on a fresh free port ----------------------------
 have uv || warn "uv not found — the MCP runtime (uvx mcp-obsidian) may not start."

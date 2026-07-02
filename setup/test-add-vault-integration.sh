@@ -91,6 +91,11 @@ chk "existing vault keeps port 27124"              "[ '$sport' = 27124 ]"
 chk "new vault got a distinct free port (27126)"   "[ '$pport' = 27126 ]"
 chk "new vault data.json port = 27126"             "[ \"\$(jq -r .port '$SB/obsidian-puma/.obsidian/plugins/obsidian-local-rest-api/data.json')\" = 27126 ]"
 chk "new vault personalized (name filled)"         "grep -q '\"Obsidian Puma\"' '$SB/obsidian-puma/.agents/vault-profile.md'"
+# Vault-creation hygiene: the first commit must already hold real values on `main` —
+# NOT template tokens on the machine's default branch. These two fail on the pre-fix
+# code (which committed before personalizing and ran a bare `git init`).
+chk "new vault is on branch 'main'"                "[ \"\$(git -C '$SB/obsidian-puma' rev-parse --abbrev-ref HEAD)\" = main ]"
+chk "first commit has real values (no {{ }} tokens)" "! git -C '$SB/obsidian-puma' show HEAD:.agents/vault-profile.md | grep -q '{{'"
 # The `base` remote is ephemeral now: a fresh vault carries NO standing `base` remote and
 # instead resolves its base URL from the persisted .agents/.base-url it inherited.
 chk "new vault has NO standing base remote"        "! git -C '$SB/obsidian-puma' remote get-url base >/dev/null 2>&1"

@@ -34,6 +34,21 @@ lint passes. Newest at the bottom. Prefix entries with `## [YYYY-MM-DD] <type> |
   menu duplicate. Documented the two knowledge planes (`kw-*` vs `ce-*`) in `AGENTS.md`.
   See [[kw-and-ce-knowledge-planes]].
 
+## [2026-07-02] fix | Vault-creation hygiene + Sensitive-plane symlink check
+- `setup.sh`/`add-vault.sh`: personalize (`init-vault.sh`) *before* the initial commit,
+  not after — a new vault's history now starts with real values instead of
+  `{{PLACEHOLDER}}` tokens. `git init -b main` explicitly, instead of inheriting the
+  machine's `init.defaultBranch`. See [[fresh-vault-uncommitted-personalization-and-branch-drift]].
+- `update-base.sh`: "Next steps" messaging is now origin-aware — only recommends
+  branch+PR when `origin` exists; says "commit directly" for a vault with no `origin`
+  remote yet.
+- `setup-sensitive-plane.sh check`: now scans the backing directory for symlinks that
+  resolve to an ancestor of themselves (e.g. a stray shortcut back to a cloud
+  provider's account root) and flags them — previously undetected. Doc updated with the
+  Files-On-Demand account-wide-toggle fallback and a note that `brew install --cask`
+  needs a human hand-off headlessly. See [[onedrive-sensitive-plane-setup-gotchas]].
+- All three found while setting up a second topic vault end to end (`/add-vault` →
+  `/update-base` → `/setup-sensitive-plane`) in a downstream vault.
 ## [2026-07-02] fix | Harden the ephemeral base remote (code-review follow-ups) + compound learning
 - `update-base.sh`: dedicated `base-ephemeral` fetch remote — reclaimed at start-of-run,
   removed on exit; the user's/legacy `base` is now read-only, so a SIGKILL orphan self-heals
@@ -43,3 +58,14 @@ lint passes. Newest at the bottom. Prefix entries with `## [YYYY-MM-DD] <type> |
   happy-path rc assertion, fetch-failure trap cleanup).
 - New learning [[ephemeral-fetch-remote-pattern]]. Surfaced follow-ups filed as
   Object-3/obsidian-base#30 (credential scrub), #31 (URL/precedence dedupe), #32 (docs).
+
+## [2026-07-02] fix | Vault-creation hygiene: code-review follow-ups (post-merge hardening)
+- `setup.sh`/`add-vault.sh`/`setup.ps1`: `git init -b main` now falls back to
+  `git init` + `symbolic-ref` for git < 2.28 (was a hard abort right after `rm -rf .git`);
+  and a placeholder guard warns loudly if `{{PLACEHOLDER}}` tokens survive personalization
+  instead of silently committing them as a false success. `setup.ps1` brought to parity
+  (deferred commit + `-b main` + guard, gated on a fresh-vault flag).
+- `test-add-vault-integration.sh`: 20 → 22 checks — asserts the first commit is on `main`
+  and holds real values (no `{{ }}`), which the prior test could not distinguish from the bug.
+- Cross-linked [[fresh-vault-uncommitted-personalization-and-branch-drift]] and
+  [[onedrive-sensitive-plane-setup-gotchas]] (each ↔ the other + [[ephemeral-fetch-remote-pattern]]).

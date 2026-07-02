@@ -355,6 +355,30 @@ cmd_check() {
     c_ok "No zero-byte .md stubs in _sensitive/ (no dehydration symptom)."
   fi
 
+  # 4. No symlink inside the backing dir should resolve to an ancestor of
+  #    itself. Observed in practice: an unexplained "<Provider> - <Org>"
+  #    shortcut appearing inside a OneDrive-backed folder, pointing back at
+  #    the cloud account root that contains it — a sync loop waiting to
+  #    happen. `find` WITHOUT `-L` lists symlinks without following them, so
+  #    this can't get stuck in the very loop it's checking for.
+  if [ -n "$target" ] && [ -d "$target" ]; then
+    local recursive=0 s tgt_abs
+    while IFS= read -r s; do
+      [ -n "$s" ] || continue
+      tgt_abs="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$s" 2>/dev/null || true)"
+      [ -n "$tgt_abs" ] && [ -d "$tgt_abs" ] || continue
+      if is_ancestor "$tgt_abs" "$target"; then
+        c_err "Self-referential symlink in the backing dir: $s → $tgt_abs (points at an ancestor of the backing dir itself — remove it; can cause provider sync loops/errors)."
+        recursive=$((recursive+1))
+      fi
+    done < <(find "$target" -type l 2>/dev/null)
+    if [ "$recursive" -eq 0 ]; then
+      c_ok "No self-referential symlinks inside the backing dir."
+    else
+      fails=$((fails+recursive))
+    fi
+  fi
+
   echo
   c_warn "Cannot be auto-checked — confirm manually (provider settings / behavior):"
   echo "    • Files pinned LOCAL ('Always keep on this device'), never online-only."
