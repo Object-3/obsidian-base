@@ -1,6 +1,6 @@
 ---
 name: normalize-vault
-description: Bring an existing Obsidian-vault note up to this knowledge base's frontmatter + structure standard (the AGENTS.md contract), on the user's go-ahead. Use this whenever you open or are handed a vault note that isn't conformant — missing or partial YAML frontmatter, no TL;DR-to-Caveats structure, no [[links]], or missing the vault's primary tag — and it's worth keeping, or when the user says "normalize this note", "format this to our standard", "clean up this note", "make this fit the knowledge base", "add frontmatter", or "standardize these notes", or when AGENTS.md's normalize-on-contact rule fires and the user agrees. Also runs a deliberate whole-vault sweep (via lint-vault.sh) on request. Scope is structural/metadata conformance of existing vault notes — not authoring new notes, not prose/copy editing, and not docs/knowledge, docs/solutions, or plans/ (those carry their own schema). Never touches raw/ or _sensitive/ (or legacy _local/).
+description: Bring an existing Obsidian-vault note up to this knowledge base's frontmatter + structure standard (the AGENTS.md contract), on the user's go-ahead. Use this whenever you open or are handed a vault note that isn't conformant — missing or partial YAML frontmatter, no TL;DR-to-Caveats structure, no [[links]], or missing the vault's primary tag — and it's worth keeping, or when the user says "normalize this note", "format this to our standard", "clean up this note", "make this fit the knowledge base", "add frontmatter", or "standardize these notes", or when AGENTS.md's normalize-on-contact rule fires and the user agrees. Also runs a deliberate whole-vault sweep (via lint-vault.sh) on request. Scope is structural/metadata conformance of existing vault notes — not authoring new notes, not prose/copy editing. It never forces the full note standard onto docs/knowledge, docs/solutions, or plans/ (those carry their own schema); the one exception is a metadata-only graph-linking pass over docs/knowledge/ that adds the vault's primary tag + a [[link]] so kw-compound learnings surface in Obsidian's graph and tag views (also triggers on "link my knowledge notes into the graph" or "back-fill primary tags on docs/knowledge"). Never touches raw/ or _sensitive/ (or legacy _local/).
 ---
 
 # Normalize a note to the vault standard
@@ -25,9 +25,12 @@ mass-rewrite, and don't bother normalizing throwaway scratch that isn't worth ke
    - *Single note* — the file you were pointed at, or the one you just encountered and
      got a yes on.
    - *Sweep* ("normalize the whole vault") — run `.agents/scripts/lint-vault.sh` for a
-     deterministic list of notes that miss the frontmatter standard (it already applies
-     the exclusions below). Then **show the user that list and confirm before editing.**
-     The linter only checks frontmatter — structure, voice, and linking are your call.
+     deterministic list. It reports **note-standard misses** in the note area (your
+     normalization target — the exclusions below already apply there) plus **invalid-YAML**
+     frontmatter anywhere it matters, *including* the own-schema dirs under *What NOT to
+     touch* (`docs/…`, `plans/`, the backbone) — broken YAML renders as raw text there
+     too. Then **show the user that list and confirm before editing.** The linter only
+     checks frontmatter — structure, voice, and linking are your call.
 
 3. **Confirm it's in scope.** If the file is really source material (a clipping,
    transcript, export), don't reformat it — suggest moving it to `raw/` instead, and
@@ -70,9 +73,46 @@ mass-rewrite, and don't bother normalizing throwaway scratch that isn't worth ke
 - Backbone files: `index.md`, `log.md`, `hot.md` — these are the navigation/history/recent-context
   spine (maintained by the operating rules and `/vault-dream`), not content notes; don't force the note schema onto them.
 - `docs/knowledge/`, `docs/solutions/`, `plans/` — these carry their **own**
-  frontmatter schema maintained by the `kw-*` skills; don't force the note schema onto
-  them.
+  frontmatter schema maintained by the `kw-*`/`ce-*` skills; **don't force the note schema
+  onto them.** Two narrow, schema-preserving exceptions: (1) if `lint-vault.sh` flags one as
+  *invalid YAML*, quoting the offending value is a safe fix — it restores parseability without
+  touching their schema; and (2) the **Graph-linking pass** below may add the primary tag +
+  a `[[link]]` to `docs/knowledge/` notes **only**. `docs/solutions/` and `plans/` stay fully
+  hands-off.
 - Non-note files such as Obsidian Bases (`*.base`).
+
+## Graph-linking pass for `docs/knowledge/` (metadata-only — never the full standard)
+
+`docs/knowledge/` notes are written by `/kw:compound`, which uses its **own** schema
+(`type: insight|playbook|correction|pattern`, `confidence`, `source`) and does **not**
+stamp the vault's primary tag or any `[[links]]`. That leaves those learnings fully findable
+by *search* (grep / semantic) but light in Obsidian's **graph and tag views** — a real
+discoverability seam. This one narrow pass closes it, and it is the **only** thing normalize
+does inside `docs/knowledge/`.
+
+**Finding candidates:** `lint-vault.sh` won't surface these (under `docs/` it checks only
+YAML parseability, not tags/links), so identify them directly — `docs/knowledge/` notes whose
+`tags:` lacks the primary tag, or that contain no `[[wikilink]]`.
+
+Run it **only** on `docs/knowledge/` (never `docs/solutions/` or `plans/`), on the same
+consent-first basis, and touch **only** these two things:
+
+- **Primary tag** — if the note's `tags:` is missing the vault's primary tag, add it to the
+  existing list (inline `[...]` or block form). **Keep the existing keyword tags as-is** —
+  don't reorder, dedupe, or drop them.
+- **Wikilinks** — add ≥1 `[[wikilink]]` to a **genuinely** related note that **actually
+  exists** (another `docs/knowledge/` learning or a vault note). Obsidian surfaces the
+  backlink automatically, so **don't edit the target** — this keeps the pass from rewriting
+  any other (possibly human-authored) note. Never invent a link to make the count.
+
+**Never, in this pass:** change `type`/`confidence`/`source`, add `title`/`status`/`updated`,
+or restructure the body into the `TL;DR…Caveats` skeleton — any of those would fight the kw
+schema and is out of scope here. (Invalid *YAML* is the separate, always-safe quoting fix from
+*What NOT to touch*.)
+
+The note is already catalogued in `index.md` by `/kw:compound`, so no new catalog entry is
+needed; on a sweep, append one `log.md` line summarizing the batch
+(`## [YYYY-MM-DD] normalize | graph-linked N docs/knowledge notes (primary tag + links)`).
 
 ## Notes
 

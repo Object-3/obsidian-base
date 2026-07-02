@@ -97,9 +97,10 @@ For each durable candidate:
    link); if not → **ADD**.
 3. **De-identify, then write.** Strip secrets, credentials, personal/third-party detail
    before anything touches the tracked vault (see *Privacy* below). Then **delegate the
-   write to `/kw:compound`** — it owns `docs/knowledge/` frontmatter, the primary-tag rule,
-   search-before-save dedupe, and the `index.md` + `log.md` backbone updates. Do not
-   hand-roll the note schema.
+   write to `/kw:compound`** — it owns `docs/knowledge/` frontmatter, search-before-save
+   dedupe, and the `index.md` + `log.md` backbone updates. Do not hand-roll the note schema.
+   Note that `/kw:compound`'s schema does **not** stamp the vault's primary tag or `[[links]]`;
+   the **graph-linking pass** in step 4 back-fills those so the new learning joins the graph.
 
 > **Privacy (self-enforced — do not rely on the pre-commit hook alone; the Obsidian Git
 > plugin may use a bundled git that skips native hooks):** learnings with a secret, API
@@ -123,7 +124,10 @@ LLM/agent can do**, and express each finding as ADD/UPDATE/DELETE/NOOP:
 - **Orphans** (no inbound links), **dead/broken `[[wikilinks]]`**, **stale claims**, and
   **missing concept pages / cross-references** — fix by adding links/backlinks or flagging a
   gap. Use **`/normalize-vault`** for any structural/frontmatter fixes to existing notes;
-  don't hand-roll them.
+  don't hand-roll them. This includes **`docs/knowledge/` learnings that `/kw:compound` left
+  without the vault's primary tag or any `[[link]]`** — they read as graph-orphans even though
+  search finds them; run `/normalize-vault`'s **graph-linking pass** to back-fill the primary
+  tag + ≥1 link, without otherwise touching their kw schema.
 
 `lint-vault.sh` stays frontmatter-only; this phase is the semantic layer on top.
 
