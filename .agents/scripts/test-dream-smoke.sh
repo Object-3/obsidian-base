@@ -108,6 +108,9 @@ printf '%s\n' "$WM_2D" > "$WORK/wm"
 fire() { DREAM_STATE="$WORK/wm" CLAUDE_PROJECTS_DIR="$PROJ" DREAM_SLUGS="slugC" bash "$HOOK"; }
 out=$(fire)
 printf '%s\n' "$out" | grep -q 'vault-dream' && ok "fires: 2d elapsed + 6 sessions" || bad "expected nudge, got '$out'"
+# The nudge must be valid SessionStart additionalContext JSON (the injection channel).
+printf '%s' "$out" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["hookSpecificOutput"]["hookEventName"]=="SessionStart" and "/vault-dream" in d["hookSpecificOutput"]["additionalContext"]' 2>/dev/null \
+  && ok "nudge is valid SessionStart additionalContext JSON" || bad "nudge is not valid additionalContext JSON: '$out'"
 
 echo "== 7: silent below either gate + on broken state =="
 # volume gate: only 4 sessions

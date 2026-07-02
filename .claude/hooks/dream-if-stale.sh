@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # SessionStart hook (Claude Code): a passive, self-surfacing nudge to consolidate the vault.
 # When it's been a while AND enough new agent sessions have piled up since the last dream,
-# it prints ONE line into session context offering `/vault-dream`. Otherwise it stays silent.
+# it injects a one-line offer to run `/vault-dream` into the session. Otherwise it stays silent.
 #
 # Unlike the sibling sync hook (sync-skills-if-stale.sh), which backgrounds work silently,
-# this one PRINTS to stdout so the offer surfaces in *this* session — the agent can relay it.
+# this one emits the offer so it surfaces in *this* session. It uses the SessionStart
+# `additionalContext` JSON channel — the documented, version-robust way to inject context at
+# session start — and phrases the line so the agent relays it to the user (a SessionStart
+# hook's output is agent context, not a native UI popup). If a harness doesn't parse the
+# JSON, the text still lands in context verbatim, so the nudge degrades gracefully.
 # Same safety envelope: set -euo pipefail, always exit 0, fast, never blocks or fails a session.
 #
 # Repo-scoped by construction: it's registered in this repo's .claude/settings.json via
@@ -51,5 +55,7 @@ count=$(bash "$SCAN" --count 2>/dev/null || echo "")
 case "$count" in ''|*[!0-9]*) exit 0 ;; esac
 [ "$count" -ge "$MIN_SESSIONS" ] || exit 0   # volume gate
 
-printf '🌙 %s unconsolidated session(s) since your last dream — run /vault-dream to fold learnings into the KB and consolidate the vault.\n' "$count"
+# Emit as SessionStart additionalContext so the agent reliably sees it and relays it.
+# $count is validated as digits above, so it's safe to interpolate into the JSON unescaped.
+printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"🌙 %s unconsolidated agent session(s) have accumulated since the last vault dream. Tell the user they can run /vault-dream to fold durable learnings into the knowledge base and consolidate the vault — it opens a reviewable pull request and never writes to main."}}\n' "$count"
 exit 0
