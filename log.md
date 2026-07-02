@@ -85,4 +85,10 @@ lint passes. Newest at the bottom. Prefix entries with `## [YYYY-MM-DD] <type> |
   existing `_sensitive/*` + `!_sensitive/.gitkeep`/`!_sensitive/README.md` negation
   exceptions that ship the folder with every fresh vault (git can't re-include a path
   under an excluded parent directory).
+- Follow-up (`unlink` symmetry): since the rule now lives in the hidden `.git/info/exclude`,
+  `unlink` now removes the `/_sensitive` line it `link` added. Otherwise, restoring
+  `_sensitive/` to a plain directory would leave a `/_sensitive` line excluding the whole
+  folder — the exact negation-breakage above, just relocated to a file the user won't find
+  via `git status`. Verified with a `link`→`unlink` round-trip: `.gitkeep` is re-includable
+  after unlink.
 - Extended [[onedrive-sensitive-plane-setup-gotchas]] with this as gotcha 4.

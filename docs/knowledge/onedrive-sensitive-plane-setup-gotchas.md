@@ -56,7 +56,12 @@ merge) — so that vault-specific line was silently gone on the next base pull, 
 line by hand, ran `/update-base` again for an unrelated reason, and it was wiped again.
 **Fixed in the same change that added this note:** `link` now writes that exclusion to
 `.git/info/exclude` instead — git-local, never tracked, so no overlay of tracked files
-can ever touch it again.
+can ever touch it again. The catch this introduces: because the rule now lives in a
+hidden file, `unlink` must clear it symmetrically — a lingering `/_sensitive` line
+excludes the *whole* directory once `_sensitive/` is a plain folder again, defeating the
+base `.gitignore`'s `!_sensitive/.gitkeep` / `!_sensitive/README.md` re-includes (git
+can't re-include a path under an excluded parent), so the folder would stop shipping its
+placeholders. `unlink` now removes the line it `link` added, so the round-trip is clean.
 
 ## Context
 
