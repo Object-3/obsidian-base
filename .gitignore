@@ -49,6 +49,15 @@ _local/*
 .playwright-mcp/
 .playwright/
 
+# --- ce-optimize scratch artifacts (compound-engineering skill) ---
+# The ce-optimize skill's own contract keeps experiment scratch state (measurement
+# harnesses, eval questions, baseline snapshots) under .context/compound-engineering/
+# ce-optimize/<spec-name>/, which is local-only and never meant to be committed. If that
+# scratch ever gets copied into the tracked tree instead of .context/ (as happened once
+# under .agents/scripts/ce-optimize-obsidian-mcp-quick-orient/), keep it out of git
+# regardless of where it lands — match the skill's own <spec-name> naming convention.
+**/ce-optimize-*/
+
 # --- macOS / OS cruft ---
 .DS_Store
 .AppleDouble
