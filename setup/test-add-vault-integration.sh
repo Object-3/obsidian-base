@@ -96,10 +96,31 @@ chk "new vault personalized (name filled)"         "grep -q '\"Obsidian Puma\"' 
 chk "new vault has NO standing base remote"        "! git -C '$SB/obsidian-puma' remote get-url base >/dev/null 2>&1"
 chk "new vault base URL persisted (.base-url)"     "grep -qF \"file://$BASE\" '$SB/obsidian-puma/.agents/.base-url'"
 
-echo "== run update-base.sh in the new vault (base remote must not persist) =="
+echo "== run update-base.sh in the new vault (ephemeral remote must not persist) =="
 NEWV="$SB/obsidian-puma"
-( cd "$NEWV" && bash .agents/scripts/update-base.sh ) >/dev/null 2>&1 || true
-chk "no standing 'base' remote after update-base"  "! git -C '$NEWV' remote get-url base >/dev/null 2>&1"
+# Seed a stray `base-ephemeral` as if a prior run was SIGKILLed mid-fetch: this run must
+# reclaim it at start and never leave one standing (crash orphan can't become permanent).
+git -C "$NEWV" remote add base-ephemeral "file://$BASE" 2>/dev/null || true
+if ( cd "$NEWV" && bash .agents/scripts/update-base.sh ) >/dev/null 2>&1; then ub_rc=0; else ub_rc=$?; fi
+chk "update-base.sh exited 0 (fetch really ran)"     "[ '$ub_rc' = 0 ]"
+chk "no standing 'base' remote after update-base"    "! git -C '$NEWV' remote get-url base >/dev/null 2>&1"
+chk "no standing 'base-ephemeral' after update-base" "! git -C '$NEWV' remote get-url base-ephemeral >/dev/null 2>&1"
+
+echo "== legacy vault with a standing 'base' remote: update-base KEEPS it, unchanged =="
+LEG="$SB/legacy"; cp -R "$NEWV" "$LEG"
+git -C "$LEG" remote remove base-ephemeral 2>/dev/null || true
+rm -f "$LEG/.agents/.base-url"                        # force URL resolution via the legacy remote
+git -C "$LEG" remote add base "file://$BASE"
+( cd "$LEG" && bash .agents/scripts/update-base.sh ) >/dev/null 2>&1 || true
+chk "legacy 'base' remote preserved after update-base" "git -C '$LEG' remote get-url base >/dev/null 2>&1"
+chk "legacy 'base' URL unchanged (not repointed)"      "[ \"\$(git -C '$LEG' remote get-url base)\" = \"file://$BASE\" ]"
+
+echo "== update-base.sh fetch FAILURE still cleans up the ephemeral remote (trap fires) =="
+FAILV="$SB/failv"; cp -R "$NEWV" "$FAILV"
+git -C "$FAILV" remote remove base-ephemeral 2>/dev/null || true
+if ( cd "$FAILV" && BASE_REPO_URL="file:///nonexistent-$$.git" bash .agents/scripts/update-base.sh ) >/dev/null 2>&1; then fub_rc=0; else fub_rc=$?; fi
+chk "update-base.sh fails on unreachable base (non-zero exit)"      "[ '$fub_rc' != 0 ]"
+chk "no standing 'base-ephemeral' after failed fetch (trap fired)"  "! git -C '$FAILV' remote get-url base-ephemeral >/dev/null 2>&1"
 
 echo
 if [ "$FAIL" -eq 0 ]; then printf '\033[1;32m✓ all %d checks passed\033[0m\n' "$PASS"; exit 0

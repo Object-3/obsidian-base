@@ -75,7 +75,10 @@ rm -rf .git                       # make it YOURS, not a clone of the base
 # No standing `base` git remote (see update-base.sh: it adds one ephemerally per fetch and
 # removes it, so `base` can't be mis-picked in Obsidian Git and push private notes to the
 # public template). Persist a NON-DEFAULT base URL so this vault's /update-base finds the
-# same fork/custom base; the public default needs nothing.
+# same fork/custom base; the public default needs nothing. Clear any .base-url the clone
+# source carried first, so the new vault's base is exactly what setup resolved — not a
+# stowaway inherited from the clone.
+rm -f .agents/.base-url
 if [ "$BASE_REPO_URL" != "https://github.com/Object-3/obsidian-base.git" ]; then
   printf '%s\n' "$BASE_REPO_URL" > .agents/.base-url
 fi

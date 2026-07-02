@@ -3,7 +3,7 @@
 # WITHOUT touching your notes, vault-profile, or content.
 #
 # GIT-NATIVE: every vault is already a git repo (Obsidian Git needs one), so we use a
-# `base` git remote instead of downloading tarballs. That makes this host-agnostic
+# short-lived git remote instead of downloading tarballs. That makes this host-agnostic
 # (any git URL, not just GitHub), pinnable to a tag/SHA, and able to prune files the
 # base removed. It overlays ONLY the base-owned engine paths below.
 #
@@ -30,10 +30,10 @@
 #   BASE_REF=main | v1.2.0 | <sha>                    # branch, tag, or commit to pull
 #   .agents/.base-url                                 # persisted base URL (fork/custom base)
 #
-# The `base` git remote is EPHEMERAL: this script adds it only for the fetch and removes it
-# on exit (see below). Nothing keeps a standing `base` remote, so a fork's/custom base's URL
-# is remembered in the tracked .agents/.base-url file instead (written by setup only when a
-# non-default URL is used).
+# The fetch remote is EPHEMERAL: this script adds a dedicated `base-ephemeral` remote only for
+# the fetch and removes it on exit (see below) — it never touches a `base` remote you keep.
+# Nothing base-related is left standing, so a fork's/custom base's URL is remembered in the
+# tracked .agents/.base-url file instead (written by setup only when a non-default URL is used).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT"
 
@@ -45,8 +45,8 @@ if [ -n "${BASE_REPO_URL:-}" ]; then
   :
 elif [ -n "${BASE_REPO:-}" ]; then
   BASE_REPO_URL="https://github.com/${BASE_REPO}.git"
-elif [ -s .agents/.base-url ]; then
-  BASE_REPO_URL="$(tr -d '[:space:]' <.agents/.base-url)"
+elif [ -s .agents/.base-url ] && BASE_REPO_URL="$(tr -d '[:space:]' <.agents/.base-url)" && [ -n "$BASE_REPO_URL" ]; then
+  :   # persisted fork/custom base URL (a blank/whitespace-only file falls through)
 elif BASE_REPO_URL="$(git remote get-url base 2>/dev/null)" && [ -n "$BASE_REPO_URL" ]; then
   :   # legacy vault with a standing `base` remote — honor its URL
 else
@@ -82,21 +82,24 @@ PATHS=(
   ".obsidian/snippets/hide-engine-files.css"
 )
 
-# The `base` remote is EPHEMERAL. Only /update-base needs it, and leaving one STANDING is a
-# footgun: once `origin` exists a user could pick `base` in Obsidian Git's remote picker and
-# push PRIVATE vault content into the (public) template repo. So add it just for this fetch
-# and remove it on exit — but ONLY if THIS run added it, so we never delete a remote the user
-# deliberately kept (a legacy vault, a power user). The trap fires on error/interrupt too, so
-# an aborted run can't leave `base` standing either.
-base_preexisted=""
-if git remote get-url base >/dev/null 2>&1; then base_preexisted=1; fi
-cleanup_base_remote() { [ -n "$base_preexisted" ] || git remote remove base 2>/dev/null || true; }
+# The fetch remote is EPHEMERAL. /update-base needs a remote to fetch from, but leaving one
+# STANDING is a footgun: once `origin` exists a user could pick it in Obsidian Git's remote
+# picker and push PRIVATE vault content into the (public) template repo. So we use a DEDICATED
+# name this script owns end to end — `base-ephemeral` — never the bare `base`:
+#   * any stray `base-ephemeral` from a crashed/SIGKILLed prior run is reclaimed at the START
+#     of every run, so a hard-kill orphan can never be silently promoted to a permanent remote;
+#   * it's added only for this fetch; and
+#   * the trap removes it on exit (normal exit, `set -e` error, and SIGINT/SIGTERM).
+# A user's or legacy vault's own `base` remote is NEVER added, removed, or repointed here — its
+# URL is only READ for the precedence chain above — so we can't clobber a remote someone kept.
+# (`base-ephemeral` is a reserved name this script owns; don't use it for your own remote.)
+EPHEMERAL_REMOTE="base-ephemeral"
+cleanup_base_remote() { git remote remove "$EPHEMERAL_REMOTE" 2>/dev/null || true; }
 trap cleanup_base_remote EXIT
-
-if [ -n "$base_preexisted" ]; then git remote set-url base "$BASE_REPO_URL"
-else git remote add base "$BASE_REPO_URL"; fi
+git remote remove "$EPHEMERAL_REMOTE" 2>/dev/null || true   # reclaim a crash/SIGKILL orphan
+git remote add "$EPHEMERAL_REMOTE" "$BASE_REPO_URL"
 echo "Fetching base layer from $BASE_REPO_URL @ $BASE_REF ..."
-git fetch -q --depth 1 base "$BASE_REF" || {
+git fetch -q --depth 1 "$EPHEMERAL_REMOTE" "$BASE_REF" || {
   echo "Could not fetch $BASE_REPO_URL @ $BASE_REF. Set BASE_REPO_URL / BASE_REF and retry." >&2; exit 1; }
 
 # base-authored skills — DERIVE them, don't hand-maintain a list.

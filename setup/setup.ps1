@@ -52,7 +52,9 @@ if (Test-Path (Join-Path $VaultDir ".git")) {
   # No standing `base` git remote: update-base.sh adds one ephemerally per fetch and removes
   # it, so `base` can't be mis-picked in Obsidian Git's remote picker and push private notes
   # into the (public) template. Persist a NON-DEFAULT base URL so update-base still finds a
-  # fork/custom base; the public default needs nothing.
+  # fork/custom base; the public default needs nothing. Clear any .base-url the clone source
+  # carried first, so the base is exactly what setup resolved — not a stowaway from the clone.
+  Remove-Item -Force -ErrorAction SilentlyContinue ".agents\.base-url"
   if ($BaseRepoUrl -ne "https://github.com/Object-3/obsidian-base.git") {
     Set-Content ".agents\.base-url" $BaseRepoUrl -NoNewline
   }
