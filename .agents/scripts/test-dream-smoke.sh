@@ -14,10 +14,11 @@
 #   2. dream-scan --count matches the number of selected paths
 #   3. all-worktrees globs multiple slugs and de-duplicates
 #   4. empty / missing store -> empty output, exit 0 (never crashes a caller)
-#   5. --extract emits user/assistant text, strips tool noise, tolerates malformed lines
+#   5. --extract emits Claude + Codex message shapes, strips tool noise, tolerates malformed lines
 #   6. dream-if-stale fires ONLY when >=24h elapsed AND >=5 new sessions
 #   7. dream-if-stale is silent below either gate, and on broken/missing/malformed state
-#   8. running the hook modifies no tracked file (read-only guarantee)
+#   8. the hook is read-only — mutates neither the watermark, the session store, nor the repo,
+#      checked on the FIRE path (not just the pre-gate silent path)
 #
 # Exits non-zero if any assertion fails.
 set -uo pipefail
@@ -73,18 +74,32 @@ out=$(CLAUDE_PROJECTS_DIR="$WORK/nope" DREAM_SLUGS="slugA" bash "$SCAN" --since 
 c=$(CLAUDE_PROJECTS_DIR="$PROJ" DREAM_SLUGS="slugA" bash "$SCAN" --count --since "$WM_FUT")
 [ "$c" = "0" ] && ok "future watermark: count 0" || bad "future watermark count=$c != 0"
 
-echo "== 5: --extract digest (keeps text, strips tools, tolerates malformed) =="
+echo "== 4b: dream-scan reads the watermark from DREAM_STATE (no --since) =="
+printf '%s\n' "$WM_2D" > "$WORK/wm"
+c=$(DREAM_STATE="$WORK/wm" CLAUDE_PROJECTS_DIR="$PROJ" DREAM_SLUGS="slugA" bash "$SCAN" --count)
+[ "$c" = "3" ] && ok "state-file watermark read: 3 new (no --since)" || bad "state-file read count=$c != 3"
+printf '%s\n' "$WM_FUT" > "$WORK/wm"
+c=$(DREAM_STATE="$WORK/wm" CLAUDE_PROJECTS_DIR="$PROJ" DREAM_SLUGS="slugA" bash "$SCAN" --count)
+[ "$c" = "0" ] && ok "state-file future watermark: 0" || bad "state-file future count=$c != 0"
+
+echo "== 5: --extract digest (Claude + Codex shapes, strips tools, tolerates malformed) =="
 EX="$WORK/one.jsonl"
 {
   printf '%s\n' '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"HELLO_USER"}]}}'
   printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"HELLO_ASSISTANT"},{"type":"tool_use","name":"Bash","input":{"command":"SECRET_TOOL_CALL"}}]}}'
+  printf '%s\n' '{"role":"user","content":[{"type":"input_text","text":"CODEX_USER"}]}'
+  printf '%s\n' '{"payload":{"role":"assistant","content":[{"type":"output_text","text":"CODEX_ASSISTANT"}]}}'
+  printf '%s\n' '{"type":"summary","summary":"a valid non-message record"}'
   printf '%s\n' 'this is not json at all'
 } > "$EX"
 dg=$(bash "$SCAN" --extract "$EX")
-printf '%s\n' "$dg" | grep -q 'HELLO_USER'      && ok "extract keeps user text"      || bad "extract dropped user text"
-printf '%s\n' "$dg" | grep -q 'HELLO_ASSISTANT' && ok "extract keeps assistant text" || bad "extract dropped assistant text"
-printf '%s\n' "$dg" | grep -q 'SECRET_TOOL_CALL' && bad "extract leaked tool_use input" || ok "extract strips tool_use noise"
-printf '%s\n' "$dg" | tail -n1 | grep -q '"parse_errors": 1' && ok "extract counts the malformed line" || bad "extract _meta parse_errors wrong"
+printf '%s\n' "$dg" | grep -q 'HELLO_USER'       && ok "extract keeps Claude user text"          || bad "extract dropped Claude user text"
+printf '%s\n' "$dg" | grep -q 'HELLO_ASSISTANT'  && ok "extract keeps Claude assistant text"     || bad "extract dropped Claude assistant text"
+printf '%s\n' "$dg" | grep -q 'CODEX_USER'       && ok "extract handles Codex bare {role,content}" || bad "extract dropped Codex bare-shape text"
+printf '%s\n' "$dg" | grep -q 'CODEX_ASSISTANT'  && ok "extract handles Codex {payload:{...}}"    || bad "extract dropped Codex payload-shape text"
+printf '%s\n' "$dg" | grep -q 'SECRET_TOOL_CALL' && bad "extract leaked tool_use input"           || ok "extract strips tool_use noise"
+# Only the syntactically-invalid line is a parse error; the valid {type:summary} record is skipped, not counted.
+printf '%s\n' "$dg" | tail -n1 | grep -qE '"parse_errors":[[:space:]]*1' && ok "only malformed line counts (valid non-message skipped)" || bad "extract _meta parse_errors wrong (expected exactly 1)"
 
 echo "== 6: nudge fires only when >=24h AND >=5 sessions =="
 # 6 new sessions in slugC, watermark 2 days ago -> fire
@@ -112,12 +127,22 @@ printf 'not-a-timestamp\n' > "$WORK/wm"
 out=$(DREAM_STATE="$WORK/wm" CLAUDE_PROJECTS_DIR="$PROJ" DREAM_SLUGS="slugC" bash "$HOOK"); rc=$?
 [ -z "$out" ] && [ "$rc" = "0" ] && ok "silent + exit 0: malformed watermark" || bad "malformed watermark: out='$out' rc=$rc"
 
-echo "== 8: running the hook modifies no tracked file =="
+echo "== 8: hook is read-only — mutates nothing, even on the FIRE path =="
+# Drive the hook entirely off fixtures (never the real ~/. or committed watermark), and force
+# the FIRING state (2d elapsed + 6 sessions) so the read-only guarantee is checked on the path
+# that actually prints — not just the pre-gate silent path.
+rm -rf "$PROJ/slugC"; for i in 1 2 3 4 5 6; do sess slugC "new$i"; done
+printf '%s\n' "$WM_2D" > "$WORK/wm"
+wm_before=$(cat "$WORK/wm"); proj_before=$(ls -lR "$PROJ" 2>/dev/null)
+out=$(DREAM_STATE="$WORK/wm" CLAUDE_PROJECTS_DIR="$PROJ" DREAM_SLUGS="slugC" bash "$HOOK")
+printf '%s\n' "$out" | grep -q 'vault-dream' && ok "case 8 exercises the fire path" || bad "case 8 setup: fire path not active"
+[ "$(cat "$WORK/wm")" = "$wm_before" ] && ok "hook did not mutate the watermark (fire path)" || bad "hook mutated the watermark"
+[ "$(ls -lR "$PROJ" 2>/dev/null)" = "$proj_before" ] && ok "hook did not mutate the session store" || bad "hook mutated the session store"
 if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   before=$(git -C "$ROOT" status --porcelain)
-  bash "$HOOK" >/dev/null 2>&1   # default env: real (read-only) state
+  DREAM_STATE="$WORK/wm" CLAUDE_PROJECTS_DIR="$PROJ" DREAM_SLUGS="slugC" bash "$HOOK" >/dev/null 2>&1
   after=$(git -C "$ROOT" status --porcelain)
-  [ "$before" = "$after" ] && ok "hook left the working tree unchanged" || bad "hook mutated tracked files"
+  [ "$before" = "$after" ] && ok "hook left the repo working tree unchanged" || bad "hook mutated tracked files"
 else
   ok "not a git repo — skipping tracked-file check"
 fi
