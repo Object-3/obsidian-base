@@ -264,10 +264,12 @@ including ephemeral cloud containers that don't auto-install them.
   `.agents/scripts/sync-skills.sh`. The base's curated list lives in
   `.agents/skill-sources.json` (base-owned); the sync **merges both**.
 - **Get base improvements:** run `.agents/scripts/update-base.sh` (or the
-  `/update-base` skill). It's **git-native** — it fetches a `base` git remote and
-  overlays only the base-owned engine paths (including the curated
-  `skill-sources.json`), leaving your notes, `vault-profile.md`, and
-  `skill-sources.local.json` untouched. Then run `sync-skills.sh`.
+  `/update-base` skill). It's **git-native** — it fetches from the base repo via an
+  **ephemeral** `base` git remote (added for the fetch, then removed, so nothing standing
+  can be mis-picked in Obsidian Git and push private notes to the public template) and
+  overlays only the base-owned engine paths (including the curated `skill-sources.json`),
+  leaving your notes, `vault-profile.md`, and `skill-sources.local.json` untouched. A
+  fork/custom base URL is remembered in `.agents/.base-url`. Then run `sync-skills.sh`.
 - Full mechanism: [`.agents/SKILLS.md`](.agents/SKILLS.md).
 
 ### Where skills read & write (knowledge planes)

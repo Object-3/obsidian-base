@@ -24,14 +24,34 @@
 #   plans/, raw/, and all of .obsidian/ EXCEPT the single base-owned snippet above (your own
 #   snippets, workspace, graph, appearance, and which snippets you've enabled all stay yours)
 #
-# Config (override via env, or pin persistently in .agents/.base-ref):
+# Config (override via env, or pin persistently in .agents/.base-{url,ref}):
 #   BASE_REPO=Object-3/obsidian-base                  # owner/name (GitHub shorthand)
 #   BASE_REPO_URL=https://github.com/Object-3/obsidian-base.git   # full URL (any host)
 #   BASE_REF=main | v1.2.0 | <sha>                    # branch, tag, or commit to pull
+#   .agents/.base-url                                 # persisted base URL (fork/custom base)
+#
+# The `base` git remote is EPHEMERAL: this script adds it only for the fetch and removes it
+# on exit (see below). Nothing keeps a standing `base` remote, so a fork's/custom base's URL
+# is remembered in the tracked .agents/.base-url file instead (written by setup only when a
+# non-default URL is used).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT"
 
-BASE_REPO_URL="${BASE_REPO_URL:-https://github.com/${BASE_REPO:-Object-3/obsidian-base}.git}"
+# Base repo URL precedence: BASE_REPO_URL env → BASE_REPO env (owner/name shorthand)
+# → persisted .agents/.base-url → an already-configured `base` remote (legacy vaults that
+# still keep a standing one) → public template. This is what lets a fork/custom base survive
+# now that the `base` remote is ephemeral rather than standing.
+if [ -n "${BASE_REPO_URL:-}" ]; then
+  :
+elif [ -n "${BASE_REPO:-}" ]; then
+  BASE_REPO_URL="https://github.com/${BASE_REPO}.git"
+elif [ -s .agents/.base-url ]; then
+  BASE_REPO_URL="$(tr -d '[:space:]' <.agents/.base-url)"
+elif BASE_REPO_URL="$(git remote get-url base 2>/dev/null)" && [ -n "$BASE_REPO_URL" ]; then
+  :   # legacy vault with a standing `base` remote — honor its URL
+else
+  BASE_REPO_URL="https://github.com/Object-3/obsidian-base.git"
+fi
 BASE_REF="${BASE_REF:-$( [ -f .agents/.base-ref ] && tr -d '[:space:]' <.agents/.base-ref || echo main )}"
 
 command -v git >/dev/null || { echo "git is required" >&2; exit 1; }
@@ -62,8 +82,18 @@ PATHS=(
   ".obsidian/snippets/hide-engine-files.css"
 )
 
-# Wire up / refresh the `base` remote, then fetch just the wanted ref (shallow).
-if git remote get-url base >/dev/null 2>&1; then git remote set-url base "$BASE_REPO_URL"
+# The `base` remote is EPHEMERAL. Only /update-base needs it, and leaving one STANDING is a
+# footgun: once `origin` exists a user could pick `base` in Obsidian Git's remote picker and
+# push PRIVATE vault content into the (public) template repo. So add it just for this fetch
+# and remove it on exit — but ONLY if THIS run added it, so we never delete a remote the user
+# deliberately kept (a legacy vault, a power user). The trap fires on error/interrupt too, so
+# an aborted run can't leave `base` standing either.
+base_preexisted=""
+if git remote get-url base >/dev/null 2>&1; then base_preexisted=1; fi
+cleanup_base_remote() { [ -n "$base_preexisted" ] || git remote remove base 2>/dev/null || true; }
+trap cleanup_base_remote EXIT
+
+if [ -n "$base_preexisted" ]; then git remote set-url base "$BASE_REPO_URL"
 else git remote add base "$BASE_REPO_URL"; fi
 echo "Fetching base layer from $BASE_REPO_URL @ $BASE_REF ..."
 git fetch -q --depth 1 base "$BASE_REF" || {

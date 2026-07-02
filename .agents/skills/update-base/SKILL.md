@@ -6,8 +6,9 @@ description: Pull the latest base-layer improvements (skills engine, scripts, AG
 # Update from the base repo
 
 Bring this vault's shared base layer up to date with the upstream base. It's
-**git-native** (fetches a `base` git remote — no tarballs), overlays only base-owned
-engine paths, and prunes files the base removed. Your notes,
+**git-native** (fetches via an **ephemeral** `base` git remote — added for the fetch, then
+removed, so no standing remote can be mis-picked in Obsidian Git; no tarballs), overlays
+only base-owned engine paths, and prunes files the base removed. Your notes,
 `.agents/vault-profile.md`, and `.agents/skill-sources.local.json` are left untouched.
 
 This is an **engine change** — do it on a branch and open a PR (ideally from a
@@ -20,8 +21,9 @@ separate checkout, not the live auto-syncing vault). See "content vs engine" in 
    .agents/scripts/update-base.sh
    ```
    Override the source if needed: `BASE_REPO=owner/repo .agents/scripts/update-base.sh`,
-   or `BASE_REPO_URL=<any git url>`, or pin with `BASE_REF=v1.2.0` (or a `.agents/.base-ref`
-   file). It refreshes only base-owned engine files (`AGENTS.md`, `CLAUDE.md`,
+   or `BASE_REPO_URL=<any git url>` (a fork/custom base URL is remembered in
+   `.agents/.base-url`), or pin with `BASE_REF=v1.2.0` (or a `.agents/.base-ref` file).
+   It refreshes only base-owned engine files (`AGENTS.md`, `CLAUDE.md`,
    `.gitignore`, `.gitattributes`, `.agents/SKILLS.md`, `.agents/skill-sources.json`,
    `.agents/scripts/*`, `.claude/hooks/*`, `.claude/settings.json`), prunes removed
    files, and reports what changed. Changes are left **staged**.
