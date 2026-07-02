@@ -10,14 +10,23 @@ Obsidian MCP instructions (e.g. ~/.claude/CLAUDE.md), not replace them.
 Trigger only when BOTH hold: the Obsidian MCP connector is available, AND the
 connected vault is actually obsidian-base-derived — never assume the second part.
 
-**Check cheaply, once:** fetch `.agents/vault-profile.md` by its exact path (one
-`obsidian_get_file_contents` call — dot-folders don't show up in
-`obsidian_list_files_in_vault`'s listing, but ARE fetchable directly by path, so
-don't list first). If it resolves with `vault_name`/`primary_tag` frontmatter, the
-vault is obsidian-base-derived and everything below already applies to it. If the
-fetch fails, this isn't one of these vaults — fall back to normal exploration.
+**No vault-specific fact needed → no MCP call.** The recap below (paths, tools,
+conventions) is invariant across every obsidian-base fork — if the question is
+answerable straight from it (e.g. "which folder do compounded learnings go in?"),
+just answer from the recap. Don't fetch anything and don't re-verify vault identity
+first. The gate below exists only for questions that need a fact specific to *this*
+vault instance — its name, its `primary_tag`, whether its Sensitive plane is
+cloud-backed, or a custom convention layered on top of the base.
 
-That one fetch is usually the ONLY MCP call orientation needs — the rest of the
+**Only when a vault-specific fact is actually needed, check cheaply, once:** fetch
+`.agents/vault-profile.md` by its exact path (one `obsidian_get_file_contents` call —
+dot-folders don't show up in `obsidian_list_files_in_vault`'s listing, but ARE
+fetchable directly by path, so don't list first). If it resolves with
+`vault_name`/`primary_tag` frontmatter, the vault is obsidian-base-derived — read the
+needed fact off it, and everything below already applies too. If the fetch fails,
+this isn't one of these vaults — fall back to normal exploration.
+
+That one fetch is usually the ONLY MCP call orientation ever needs — the rest of the
 structure is identical across every obsidian-base fork, so it doesn't need
 rediscovering:
 - `index.md` = catalog of every note (read only if you need to know what exists);
