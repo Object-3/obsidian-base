@@ -144,7 +144,7 @@ configure_mcp() {
   have uv || warn "uv not found — the MCP runtime (uvx mcp-obsidian) may not start."
   local key; key="$(cat "$VAULT_DIR/.obsidian/.rest-api-key" 2>/dev/null || echo "")"
   [ -n "$key" ] || { warn "no REST API key; skipping MCP wiring"; return; }
-  local slug; slug="$(lib_slugify "$VAULT_NAME")"
+  local label; label="$(lib_mcp_label "$VAULT_NAME")"
 
   # Assistant-presence detection drives the final "no assistant installed" note.
   if [ "$PLATFORM" = mac ]; then
@@ -157,17 +157,10 @@ configure_mcp() {
   have codex  && ASSISTANT_PRESENT=1 || true
 
   # Map the MCP_CLIENTS selector onto concrete adapter names.
-  local sel
-  case "$MCP_CLIENTS" in
-    desktop) sel="claude_desktop" ;;
-    code)    sel="claude_code" ;;
-    codex)   sel="codex_cli" ;;
-    both)    sel="claude_desktop claude_code" ;;
-    all|"")  sel="claude_desktop claude_code codex_cli" ;;
-    *)       sel="$MCP_CLIENTS" ;;   # explicit space-separated adapter list
-  esac
-  say "Wiring the vault MCP (obsidian-$slug, port $OBSIDIAN_PORT) into: $sel"
-  MCP_ALL_CLIENTS="$sel" for_each_client wire "obsidian-$slug" "$OBSIDIAN_PORT" "$key"
+  local sel; sel="$(lib_select_clients "$MCP_CLIENTS")"
+  [ -n "$sel" ] || return
+  say "Wiring the vault MCP ($label, port $OBSIDIAN_PORT) into: $sel"
+  MCP_ALL_CLIENTS="$sel" for_each_client wire "$label" "$OBSIDIAN_PORT" "$key"
 }
 
 open_vault() {

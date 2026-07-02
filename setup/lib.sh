@@ -37,6 +37,16 @@ lib_platform() { case "$(uname -s)" in Darwin) echo mac ;; Linux) echo linux ;; 
 # basis for the per-vault MCP label `obsidian-<slug>`.
 lib_slugify() { printf '%s' "$1" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-'; }
 
+# Vault name -> MCP server label `obsidian-<clean-slug>`. Strips a redundant
+# leading "obsidian"/"obsidian-" from the slug so a vault literally named
+# "Obsidian Puma" becomes `obsidian-puma`, not `obsidian-obsidian-puma`.
+lib_mcp_label() {
+  local slug; slug="$(lib_slugify "$1")"
+  slug="${slug#obsidian-}"; slug="${slug#obsidian}"; slug="${slug#-}"
+  [ -n "$slug" ] || slug="vault"
+  printf 'obsidian-%s' "$slug"
+}
+
 # Resolve uvx to an ABSOLUTE path. Claude Desktop and Codex launch stdio MCP
 # servers with a stripped PATH and don't source the shell, so a bare "uvx"
 # (under ~/.local/bin or Homebrew) silently never starts. Claude Code inherits
@@ -166,6 +176,20 @@ mcp_client_present() {
   esac
 }
 
+# Map a user-facing MCP_CLIENTS selector to concrete adapter names (echoes an
+# empty string for "none"). Shared by setup.sh and add-vault.sh.
+lib_select_clients() {
+  case "$1" in
+    desktop) echo "claude_desktop" ;;
+    code)    echo "claude_code" ;;
+    codex)   echo "codex_cli" ;;
+    both)    echo "claude_desktop claude_code" ;;
+    all|"")  echo "claude_desktop claude_code codex_cli" ;;
+    none)    echo "" ;;
+    *)       echo "$1" ;;   # explicit space-separated adapter list
+  esac
+}
+
 # --------------------------- Claude Desktop (JSON) -------------------------
 mcp_claude_desktop_exists() { # label
   local cfg; cfg="$(_cd_config_path)"
@@ -279,5 +303,50 @@ for_each_client() {
   for client in $MCP_ALL_CLIENTS; do
     mcp_client_present "$client" || { say "$client not installed — skipping." >&2; continue; }
     "mcp_${op}" "$client" "$@"
+  done
+}
+
+# Read one env value from a Claude Desktop server entry (fallback source when a
+# vault's own key/port files are missing). label var -> value (or empty).
+_cd_get_env() {
+  local cfg; cfg="$(_cd_config_path)"; [ -f "$cfg" ] || return 0
+  jq -r --arg l "$1" --arg v "$2" '.mcpServers[$l].env[$v] // empty' "$cfg" 2>/dev/null || true
+}
+
+# ---------------------- legacy-name migration ------------------------------
+# Rename a legacy `mcp-obsidian` entry to a vault-named label (obsidian-<slug>)
+# across every client that actually has it, keeping the same port + key. Only
+# touches clients where the legacy entry exists (so it never fabricates entries
+# in a client that never had one). Idempotent: a clean no-op once migrated.
+# Reconstructs port/key from the vault itself (its data.json + .rest-api-key),
+# falling back to the Claude Desktop entry's own env. Announce-before-mutate.
+lib_migrate_legacy_mcp() { # vault_dir [label]
+  local vault_dir="$1" label="${2:-}" client found="" name dj port key
+  if [ -z "$label" ]; then
+    name="$(grep -E '^vault_name:' "$vault_dir/.agents/vault-profile.md" 2>/dev/null | head -1 \
+            | sed -E 's/^vault_name:[[:space:]]*"?([^"]*)"?.*/\1/')"
+    [ -n "$name" ] || name="$(basename "$vault_dir")"
+    label="$(lib_mcp_label "$name")"
+  fi
+  for client in $MCP_ALL_CLIENTS; do
+    mcp_client_present "$client" || continue
+    mcp_exists "$client" "mcp-obsidian" && found=1
+  done
+  [ -n "$found" ] || { say "No legacy 'mcp-obsidian' entry found — nothing to migrate."; return 0; }
+
+  dj="$vault_dir/.obsidian/plugins/obsidian-local-rest-api/data.json"
+  port="$(jq -r '.port // empty' "$dj" 2>/dev/null || true)"
+  [ -n "$port" ] || port="$(_cd_get_env mcp-obsidian OBSIDIAN_PORT)"
+  [ -n "$port" ] || port=27124
+  key="$(cat "$vault_dir/.obsidian/.rest-api-key" 2>/dev/null || true)"
+  [ -n "$key" ] || key="$(_cd_get_env mcp-obsidian OBSIDIAN_API_KEY)"
+  [ -n "$key" ] || { warn "migration: could not determine the API key; leaving 'mcp-obsidian' untouched."; return 1; }
+
+  say "Migrating legacy 'mcp-obsidian' → '$label' (port $port) across clients…"
+  for client in $MCP_ALL_CLIENTS; do
+    mcp_client_present "$client" || continue
+    if mcp_exists "$client" "mcp-obsidian"; then
+      mcp_rename "$client" "mcp-obsidian" "$label" "$port" "$key" && say "  $client: mcp-obsidian → $label" >&2
+    fi
   done
 }

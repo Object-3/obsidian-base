@@ -125,6 +125,27 @@ check "desktop unwired gamma" "! mcp_exists claude_desktop obsidian-gamma"
 check "codex unwired gamma"   "! mcp_exists codex_cli obsidian-gamma"
 check "unwire of absent label is a no-op" "mcp_unwire codex_cli obsidian-nope; true"
 
+echo "== mcp label derivation (no double-prefix) =="
+check "'Obsidian Puma' -> obsidian-puma"     "[ \"\$(lib_mcp_label 'Obsidian Puma')\" = obsidian-puma ]"
+check "'My KB' -> obsidian-my-kb"            "[ \"\$(lib_mcp_label 'My KB')\" = obsidian-my-kb ]"
+check "'Object3' -> obsidian-object3"        "[ \"\$(lib_mcp_label 'Object3')\" = obsidian-object3 ]"
+
+echo "== legacy mcp-obsidian migration across clients =="
+for_each_client wire "mcp-obsidian" 27124 "legKey" >/dev/null 2>&1
+MV="$SANDBOX/mvault"
+mkdir -p "$MV/.agents" "$MV/.obsidian/plugins/obsidian-local-rest-api"
+printf 'vault_name:  "Obsidian Strategy"\n' > "$MV/.agents/vault-profile.md"
+printf '{"port":27124,"insecurePort":27123}' > "$MV/.obsidian/plugins/obsidian-local-rest-api/data.json"
+printf 'legKey' > "$MV/.obsidian/.rest-api-key"
+lib_migrate_legacy_mcp "$MV" >/dev/null 2>&1
+check "desktop: mcp-obsidian gone"           "! mcp_exists claude_desktop mcp-obsidian"
+check "desktop: obsidian-strategy present"    "mcp_exists claude_desktop obsidian-strategy"
+check "codex: obsidian-strategy present"      "mcp_exists codex_cli obsidian-strategy"
+check "claude code: obsidian-strategy present" "mcp_exists claude_code obsidian-strategy"
+check "migrated desktop entry keeps port 27124" "[ \"\$(jq -r '.mcpServers[\"obsidian-strategy\"].env.OBSIDIAN_PORT' '$CLAUDE_DESKTOP_CONFIG')\" = 27124 ]"
+mig_out="$(lib_migrate_legacy_mcp "$MV" 2>&1)"
+check "second migration is a clean no-op"     "echo \"\$mig_out\" | grep -q 'nothing to migrate'"
+
 echo
 if [ "$FAIL" -eq 0 ]; then
   printf '\033[1;32m✓ all %d checks passed\033[0m\n' "$PASS"; exit 0
