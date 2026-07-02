@@ -33,3 +33,13 @@ lint passes. Newest at the bottom. Prefix entries with `## [YYYY-MM-DD] <type> |
   vendored dash-form `kw-*` are the single invocation — kills the `kw:` / `compound-knowledge:`
   menu duplicate. Documented the two knowledge planes (`kw-*` vs `ce-*`) in `AGENTS.md`.
   See [[kw-and-ce-knowledge-planes]].
+
+## [2026-07-02] fix | Harden the ephemeral base remote (code-review follow-ups) + compound learning
+- `update-base.sh`: dedicated `base-ephemeral` fetch remote — reclaimed at start-of-run,
+  removed on exit; the user's/legacy `base` is now read-only, so a SIGKILL orphan self-heals
+  and the old `set-url` repoint side effect is gone. Whitespace-only `.agents/.base-url` now
+  falls through; `setup.sh`/`add-vault.sh`/`setup.ps1` clear a stowaway `.base-url` before writing.
+- `test-add-vault-integration.sh`: 14 → 20 checks (crash-orphan reclaim, legacy-preserve,
+  happy-path rc assertion, fetch-failure trap cleanup).
+- New learning [[ephemeral-fetch-remote-pattern]]. Surfaced follow-ups filed as
+  Object-3/obsidian-base#30 (credential scrub), #31 (URL/precedence dedupe), #32 (docs).
