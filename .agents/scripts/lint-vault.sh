@@ -64,7 +64,7 @@ excluded_path() {
     */raw/*|*/_sensitive/*|*/_local/*|*/assets/*|*/docs/*|*/plans/*|*/setup/*) return 0 ;;
   esac
   case "$(basename "$1")" in
-    AGENTS.md|CLAUDE.md|README.md|SETUP.md|llms.txt|index.md|log.md) return 0 ;;
+    AGENTS.md|CLAUDE.md|README.md|SETUP.md|llms.txt|index.md|log.md|hot.md) return 0 ;;
   esac
   return 1
 }

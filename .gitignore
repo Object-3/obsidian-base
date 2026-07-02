@@ -45,6 +45,14 @@ _local/*
 # Local-only agent settings (per-machine overrides, may hold secrets)
 .claude/settings.local.json
 
+# --- Engineering-plane (ce-*) build artifacts — NEVER track in this template ---
+# /ce-plan and /ce-brainstorm default to writing plans/requirements here, but this repo
+# is the parent KB template: such build docs are irrelevant to anyone cloning a fork and
+# would pollute every downstream vault. Keep them local (use .context/ for scratch). The
+# vault's own tracked planning plane is `plans/` (no docs/ prefix), which is NOT ignored.
+docs/plans/
+docs/brainstorms/
+
 # --- MCP tooling artifacts (Playwright browser snapshots / console logs; regenerated per run) ---
 .playwright-mcp/
 .playwright/

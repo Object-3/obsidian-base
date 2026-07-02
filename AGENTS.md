@@ -66,6 +66,7 @@ grow in as the vault expands.
 | Vault root + folders you create | The notes (the KB itself) — organize however you like | yours |
 | `index.md` | Catalog of every note (link + one-line summary), the navigation backbone | backbone |
 | `log.md` | Append-only record of ingests/changes | backbone |
+| `hot.md` | ~500-word recent-context cache agents read first (what changed / active context); refreshed by `/vault-dream`. Sits above `index.md`. | backbone |
 | `assets/` | Where Obsidian drops pasted/embedded images, keeping them out of your note area. Auto-managed — you never touch it. | mechanism |
 | `_sensitive/` | **Gitignored** Sensitive plane: confidential notes + large/sensitive originals (PDFs, datasets) kept off git but first-class in Obsidian. Optionally cloud-backed for durability via `/setup-sensitive-plane`. The pre-commit size + confidential guards point here. (Pre-rename name: `_local/`, still gitignored for back-compat.) | mechanism |
 | `raw/` | *Convention, created on demand:* immutable source material (clippings, transcripts, exports) you synthesize from and never edit | convention |
@@ -73,6 +74,7 @@ grow in as the vault expands.
 | `docs/solutions/` | Solved-problem / pattern write-ups | `past-work-researcher` reads |
 | `plans/` | In-progress plans & brainstorms | `kw-plan` / `kw-work` write; `past-work-researcher` reads |
 | `.agents/` | **Agent home (agnostic):** `vault-profile.md`, `skills/`, `agents/`, `scripts/` | engine |
+| `.agents/dream-state` | Committed watermark (ISO-8601 timestamp) of the last `/vault-dream` run; advances only when the dream's PR is merged. Per-vault state — seeded by `init-vault.sh`, not overlaid by `update-base`. | mechanism |
 | `.claude/`, `.codex/` | Tool-specific config; `skills`/`agents` here are pointers to `.agents/` | engine |
 | `.obsidian/` | Obsidian config | engine |
 
@@ -212,6 +214,40 @@ This KB is maintained like Karpathy's [LLM Wiki](https://gist.github.com/karpath
    Never reformat `raw/` (immutable) or `_sensitive/`; if you can't ask (non-interactive
    run), just flag it rather than changing it.
 7. **Compound.** End a cycle by extracting reusable learnings to `docs/knowledge/`.
+8. **Dream (consolidate periodically).** Rules 5–7 are the maintenance loop; the
+   **`/vault-dream`** skill *runs that loop on a cadence* and adds session-learning capture.
+   One triggered pass reads your agent session transcripts since a watermark, folds durable
+   learnings into `docs/knowledge/` (delegating to `kw-compound`), consolidates the vault
+   (dedupe, contradictions, orphans, dead links, re-index — via `stale-knowledge-checker` +
+   `lint-vault.sh` + `/normalize-vault`), refreshes `hot.md`, and hands the whole changeset
+   off as a **reviewable branch + pull request (PR)** — never a write to `main`. See *The
+   dream* below.
+
+### The dream (self-improving consolidation) — how it surfaces & its rails
+
+- **Trigger (self-surfacing, not a daemon).** A second `SessionStart` hook
+  (`.claude/hooks/dream-if-stale.sh`) prints a one-line nudge into the session **only** when
+  it has been **≥24 hours since the last dream AND ≥5 new sessions** have accumulated.
+  Otherwise it is silent. It is repo-scoped, so it fires only when an agent starts **inside
+  the vault repo** — never when another project merely reads the vault over the Obsidian
+  Model Context Protocol (MCP). The nudge only *offers*; accepting it runs the skill.
+- **Isolation.** Every run happens on its **own branch** and opens a PR (or, with no
+  `git`/`gh`, writes a `DREAMS.md` review artifact and applies nothing). It **never
+  auto-merges** and never writes to `main`; the human reviews the PR. Every proposed change
+  carries a one-line rationale + provenance (which session/note drove it).
+- **Privacy.** Learnings are **de-identified** before landing in a tracked note; anything
+  confidential is routed to `_sensitive/` with `classification: confidential`. The skill
+  self-enforces this (the Obsidian Git plugin may use a bundled git that skips the native
+  pre-commit guard), with `**/*.private.md` + the pre-commit confidential guard as backstops.
+- **Safety.** Human-authored prose is **never** deleted or rewritten — contradictions in it
+  become `> [!contradiction]` callouts for a human. `DELETE` is restricted to agent-authored
+  notes. `raw/` and `_sensitive/` are never destructively rewritten.
+- **Portable + fallback for non-Claude agents.** The skill core is plain Markdown any agent
+  (Claude Code, Codex, Cursor, Copilot, Gemini) can run — the auto-nudge hook is the only
+  Claude-Code-specific piece. **Codex/Cursor/Gemini users invoke `/vault-dream` manually**
+  (no hook); a scheduled/cron run (`claude -p "/vault-dream"` or the equivalent) is a
+  supported manual fallback and, as a power-user follow-up, an opt-in unattended mode — both
+  still open a branch + reviewable artifact, never a silent commit to `main`.
 
 ## Skills (portable across agents)
 

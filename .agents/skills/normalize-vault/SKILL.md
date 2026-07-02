@@ -67,6 +67,8 @@ mass-rewrite, and don't bother normalizing throwaway scratch that isn't worth ke
 - `raw/` — immutable source material; synthesize from it, never reformat it.
 - `_sensitive/` (and legacy `_local/`), `assets/`, and dot-folders (`.agents`, `.claude`, `.codex`, `.obsidian`).
 - Engine / meta markdown: `AGENTS.md`, `CLAUDE.md`, `README.md`, `SETUP.md`, `llms.txt`.
+- Backbone files: `index.md`, `log.md`, `hot.md` — these are the navigation/history/recent-context
+  spine (maintained by the operating rules and `/vault-dream`), not content notes; don't force the note schema onto them.
 - `docs/knowledge/`, `docs/solutions/`, `plans/` — these carry their **own**
   frontmatter schema maintained by the `kw-*` skills; don't force the note schema onto
   them.

@@ -1,6 +1,7 @@
 ---
 vault_name:  "{{VAULT_NAME}}"
 primary_tag: "{{PRIMARY_TAG}}"
+dream_session_scope: "this-checkout"   # this-checkout | all-worktrees (see below)
 ---
 
 # Vault profile
@@ -19,6 +20,19 @@ Run `.agents/scripts/init-vault.sh` (or the `/setup-vault` skill) to fill it in.
 
 - **Primary tag:** every note's frontmatter `tags` includes `{{PRIMARY_TAG}}`.
 - (Add any vault-specific conventions, topic areas, or house style here.)
+
+## Self-improvement (the dream)
+
+The **`/vault-dream`** skill folds learnings from your agent sessions into the knowledge
+base and consolidates the vault, on its own branch + pull request (PR). One toggle here
+controls how widely it looks for sessions:
+
+- **`dream_session_scope`** (frontmatter, above) — `this-checkout` (default) reads only
+  the current checkout's agent sessions; `all-worktrees` reads every git worktree of this
+  vault (useful when you run agents across several parallel worktrees). Omit or leave as
+  `this-checkout` and nothing changes. The watermark (`.agents/dream-state`) advances only
+  when the dream's PR is merged/applied, so an abandoned run safely reconsiders those
+  sessions next time.
 
 ## Topical folders (this vault)
 

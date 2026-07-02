@@ -9,18 +9,20 @@
 #
 # What it refreshes (base-owned engine only):
 #   AGENTS.md, CLAUDE.md, .gitignore, .gitattributes, .agents/SKILLS.md,
-#   .agents/skill-sources.json, .agents/scripts/*, .claude/hooks/*, .claude/settings.json,
+#   .agents/skill-sources.json, .agents/scripts/* (incl. dream-scan.sh + test-dream-smoke.sh),
+#   .claude/hooks/* (incl. dream-if-stale.sh), .claude/settings.json,
 #   .githooks/*, setup/*, SETUP.md, EVERY base-AUTHORED skill under .agents/skills/
 #   (auto-discovered from the fetched base tree — never a hand-kept list; see the
-#   "base-authored skills" derivation below), and the one base-owned Obsidian snippet
-#   .obsidian/snippets/hide-engine-files.css
+#   "base-authored skills" derivation below; this is how vault-dream propagates), and the
+#   one base-owned Obsidian snippet .obsidian/snippets/hide-engine-files.css
 #
 # What it NEVER touches (yours):
 #   your notes, .agents/vault-profile.md, .agents/skill-sources.local.json, the VENDORED
 #   skills/agents (those come via sync-skills), your own hand-authored skills, index.md,
-#   log.md, llms.txt, README.md, docs/, plans/, raw/, and all of .obsidian/ EXCEPT the
-#   single base-owned snippet above (your own snippets, workspace, graph, appearance,
-#   and which snippets you've enabled all stay yours)
+#   log.md, hot.md, .agents/dream-state (per-vault backbone/state — overlaying the watermark
+#   would reset your dream progress; init-vault seeds them), llms.txt, README.md, docs/,
+#   plans/, raw/, and all of .obsidian/ EXCEPT the single base-owned snippet above (your own
+#   snippets, workspace, graph, appearance, and which snippets you've enabled all stay yours)
 #
 # Config (override via env, or pin persistently in .agents/.base-ref):
 #   BASE_REPO=Object-3/obsidian-base                  # owner/name (GitHub shorthand)
@@ -49,7 +51,8 @@ PATHS=(
   ".githooks"
   # NOTE: base-AUTHORED skills under .agents/skills/ are deliberately NOT listed here.
   # They're auto-discovered from the fetched base tree and appended to PATHS below
-  # (search "base-authored skills"), so adding a new base skill never needs an edit here.
+  # (search "base-authored skills"), so adding a new base skill (e.g. vault-dream) never
+  # needs an edit here.
   "setup"
   "SETUP.md"
   # The one base-owned Obsidian snippet: the rule for which engine files to hide from

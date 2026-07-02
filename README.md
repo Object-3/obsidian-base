@@ -96,6 +96,15 @@ users just write notes — sync is automatic, no git. Append-only/generated file
 merges resolve without conflict markers. **Content** (human- or MCP-authored notes)
 flows to `main`; **engine** changes go on a branch + PR (see `AGENTS.md`).
 
+## Self-improving (the dream)
+
+The vault consolidates itself between sessions. The **`/vault-dream`** skill reads your
+agent session transcripts since a watermark, folds durable learnings into
+`docs/knowledge/`, dedupes/re-indexes the vault, and opens a **reviewable pull request** —
+it never writes to `main` or auto-merges. A passive `SessionStart` nudge offers it once
+enough sessions have piled up (≥24h and ≥5 new sessions); other agents run `/vault-dream`
+manually. See *The dream* in `AGENTS.md`.
+
 ## Requirements
 
 `bash`, `git`, `curl`, `jq`, `python3` for the scripts. The vault content itself is

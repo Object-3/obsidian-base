@@ -57,6 +57,30 @@ sub "{{PRIMARY_TAG}}"   "$PRIMARY_TAG"
 echo
 echo "Profile set: name='$VAULT_NAME'  tag='$PRIMARY_TAG'  (see .agents/vault-profile.md)"
 
+# Seed the self-improvement backbone (the /vault-dream loop). BOTH are created only if
+# ABSENT, so re-running init on a live vault never resets an advanced watermark (which
+# otherwise advances only when the dream's PR merges) or clobbers a populated hot.md. A
+# fresh vault gets a baseline watermark; the first dream then consolidates from there.
+if [ ! -f "$ROOT/.agents/dream-state" ]; then
+  date -u +"%Y-%m-%dT%H:%M:%SZ" > "$ROOT/.agents/dream-state"
+fi
+if [ ! -s "$ROOT/hot.md" ]; then
+  cat > "$ROOT/hot.md" <<'HOT'
+# Hot — recent context
+
+> **Read this first.** A short (~500-word) cache of *what changed recently* and *what's
+> active right now* — the fast-orient layer above [`index.md`](index.md) (the full
+> catalog) and [`log.md`](log.md) (the full history). Skim `hot.md` to get current fast;
+> drop to `index.md` when you need the whole map.
+
+_Empty until the first consolidation pass._ The **`/vault-dream`** skill refreshes this
+file at the end of each run — it distills the most recent additions, decisions, and open
+threads here so the next agent (or you) starts oriented without reading the whole log.
+Until then, start from `index.md`.
+HOT
+fi
+echo "Seeded dream watermark (.agents/dream-state) + hot.md recent-context cache."
+
 # Clear the base's own example notes (flagged `base_seed: true` in frontmatter). They
 # document how the base itself was built — useful in the base repo, noise in a fork.
 # Only flagged notes are ever removed, so YOUR notes are always safe, even on a re-run.
