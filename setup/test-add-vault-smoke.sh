@@ -45,7 +45,12 @@ cat > "$SANDBOX/bin/codex" <<'STUB'
 #!/usr/bin/env bash
 exit 0
 STUB
-chmod +x "$SANDBOX/bin/claude" "$SANDBOX/bin/codex"
+# stub curl so lib_provision_plugins runs offline (release lookup fails gracefully)
+cat > "$SANDBOX/bin/curl" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$SANDBOX/bin/claude" "$SANDBOX/bin/codex" "$SANDBOX/bin/curl"
 export PATH="$SANDBOX/bin:$PATH"
 
 # ---- sandbox env -----------------------------------------------------------
@@ -75,6 +80,16 @@ check "listening 27124 forces 27126" "[ '$p_live' = 27126 ]"
 mcp_claude_desktop_wire "obsidian-alpha" 27124 "keyA" >/dev/null 2>&1
 p2="$(lib_alloc_free_port)"
 check "config-reserved 27124 skips to 27126" "[ '$p2' = 27126 ]"
+
+echo "== provision writes the allocated port into data.json =="
+FAKE_VAULT="$SANDBOX/vault"
+mkdir -p "$FAKE_VAULT/.obsidian/plugins/obsidian-local-rest-api"
+: > "$FAKE_VAULT/.obsidian/plugins/obsidian-local-rest-api/main.js"   # so the data.json branch runs
+lib_provision_plugins "$FAKE_VAULT" 27126 "provKey" >/dev/null 2>&1
+dj="$FAKE_VAULT/.obsidian/plugins/obsidian-local-rest-api/data.json"
+check "data.json https port = 27126"    "[ \"\$(jq -r .port '$dj')\" = 27126 ]"
+check "data.json insecure port = 27125" "[ \"\$(jq -r .insecurePort '$dj')\" = 27125 ]"
+check "rest-api-key file written"       "[ \"\$(cat '$FAKE_VAULT/.obsidian/.rest-api-key')\" = provKey ]"
 
 echo "== wire across all present clients =="
 for_each_client wire "obsidian-beta" "$p2" "keyB" >/dev/null 2>&1
