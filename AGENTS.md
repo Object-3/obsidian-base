@@ -24,7 +24,7 @@ shared base scaffolding.) Don't add secrets, credentials, or regulated/personal 
 Every note starts with YAML at line 1:
 ```yaml
 ---
-title:   "Human-readable title"
+title:   "Human-readable title"          # the FILENAME is a kebab-case slug of this — see "File naming"
 type:    decision-record | research | playbook | scratch | index
 status:  active | draft | reference | archived
 tags:    [<primary-tag>, ...topical]   # lowercase; always include the vault's primary tag (see vault-profile.md)
@@ -51,6 +51,36 @@ related:                                 # optional, list of links
   The same rule holds when an agent reports back in conversation: lead with plain
   language, gloss the shorthand once.
 - Update `updated:` when you materially change a note.
+
+## File naming
+
+**Every note's filename is a kebab-case slug** — lowercase ASCII letters and digits,
+words joined by single hyphens, ending in `.md` (e.g. `puma-peak-deal-strategy.md`,
+`hipaa-compliant-google-ads.md`). **No** spaces, capitals, or punctuation
+(`& — – ( ) , : / ' "` …). This holds **everywhere** — vault root and topical folders
+alike — the same convention `docs/knowledge/` and `plans/` already follow, so the whole
+vault reads one way.
+
+Why the filename isn't the title: a note's filename is also a **git path, a URL, an
+`llms.txt` entry, and a shell argument**. Spaces and `&`/`—`/`(` break links and
+tooling, need escaping, and resolve differently on case-sensitive (Linux/CI) vs
+case-insensitive (macOS) filesystems. A kebab slug is portable everywhere; a
+Title-Case-with-spaces filename is a latent bug.
+
+- **The human title lives in `title:` frontmatter** (and the H1) — *not* the filename.
+  The filename is a **short slug of the title**: aim for ≤ ~5–6 words and trim filler.
+  `title: "Outpatient Behavioral-Health Roll-Ups — Market Multiples & Risks"` →
+  `outpatient-behavioral-health-roll-ups.md`.
+- **Wikilinks target the slug** — `[[puma-peak-deal-strategy]]`. For a readable label,
+  pipe it (`[[puma-peak-deal-strategy|Puma Peak — Deal Strategy]]`) or add
+  `aliases: ["Puma Peak — Deal Strategy"]` to the note so `[[Puma Peak — Deal Strategy]]`
+  resolves and displays nicely too. (The `aliases` bridge is also how a rename keeps
+  old links working — see below.)
+- **Enforced.** `.agents/scripts/lint-vault.sh` flags any non-kebab note filename, and
+  **`/normalize-vault`** offers to rename an offender safely (kebab `git mv` + an
+  `aliases:` bridge so existing `[[links]]` keep resolving + `index.md`/`log.md` fixups).
+  Reserved backbone/engine files (`index.md`, `log.md`, `hot.md`, `AGENTS.md`,
+  `README.md`, …) keep their fixed names — they're exempt.
 
 ## Directory map (where things live)
 
@@ -344,6 +374,7 @@ door for silent writes.
   `index.md`. Read `.agents/vault-profile.md` for this vault's specifics.
 - New notes go in the vault root (or a topical subfolder — see **Topical folders**
   under the Directory map), always with frontmatter and `tags` including the vault's
-  primary tag.
+  primary tag, and a **kebab-case filename** (see **File naming**) — the human title
+  goes in `title:`, not the filename.
 - This is a knowledge base, not a codebase: the deliverable is well-sourced,
   decisive, cross-linked Markdown.

@@ -1,6 +1,6 @@
 ---
 name: normalize-vault
-description: Bring an existing Obsidian-vault note up to this knowledge base's frontmatter + structure standard (the AGENTS.md contract), on the user's go-ahead. Use this whenever you open or are handed a vault note that isn't conformant — missing or partial YAML frontmatter, no TL;DR-to-Caveats structure, no [[links]], or missing the vault's primary tag — and it's worth keeping, or when the user says "normalize this note", "format this to our standard", "clean up this note", "make this fit the knowledge base", "add frontmatter", or "standardize these notes", or when AGENTS.md's normalize-on-contact rule fires and the user agrees. Also runs a deliberate whole-vault sweep (via lint-vault.sh) on request. Scope is structural/metadata conformance of existing vault notes — not authoring new notes, not prose/copy editing. It never forces the full note standard onto docs/knowledge, docs/solutions, or plans/ (those carry their own schema); the one exception is a metadata-only graph-linking pass over docs/knowledge/ that adds the vault's primary tag + a [[link]] so kw-compound learnings surface in Obsidian's graph and tag views (also triggers on "link my knowledge notes into the graph" or "back-fill primary tags on docs/knowledge"). Never touches raw/ or _sensitive/ (or legacy _local/).
+description: Bring an existing Obsidian-vault note up to this knowledge base's frontmatter + structure standard (the AGENTS.md contract), on the user's go-ahead. Use this whenever you open or are handed a vault note that isn't conformant — missing or partial YAML frontmatter, no TL;DR-to-Caveats structure, no [[links]], missing the vault's primary tag, or a non-kebab-case filename (spaces/capitals/punctuation like "Puma Peak — Deal Strategy.md") — and it's worth keeping, or when the user says "normalize this note", "format this to our standard", "clean up this note", "make this fit the knowledge base", "add frontmatter", "standardize these notes", "rename this note to our convention", "fix these file names", or "kebab-case these files", or when AGENTS.md's normalize-on-contact rule fires and the user agrees. Also runs a deliberate whole-vault sweep (via lint-vault.sh) on request. Scope is structural/metadata conformance of existing vault notes — not authoring new notes, not prose/copy editing. It never forces the full note standard onto docs/knowledge, docs/solutions, or plans/ (those carry their own schema); the one exception is a metadata-only graph-linking pass over docs/knowledge/ that adds the vault's primary tag + a [[link]] so kw-compound learnings surface in Obsidian's graph and tag views (also triggers on "link my knowledge notes into the graph" or "back-fill primary tags on docs/knowledge"). Never touches raw/ or _sensitive/ (or legacy _local/).
 ---
 
 # Normalize a note to the vault standard
@@ -58,11 +58,33 @@ mass-rewrite, and don't bother normalizing throwaway scratch that isn't worth ke
 6. **Link it in.** Add ≥2 `[[wikilinks]]` to genuinely related notes, and **add the
    backlink on the other side**.
 
-7. **Maintain the backbone.** Add or refresh the note's entry in `index.md` (link +
+7. **Rename to a kebab-case filename (if it isn't one).** Filenames must be kebab-case —
+   lowercase, hyphens, no spaces/capitals/punctuation (`AGENTS.md` → **File naming**).
+   This applies to the **note area** (root + topical folders — the same set the linter's
+   filename check covers); `docs/…` and `plans/` are named by their owning skills, and
+   `raw/`/`_sensitive/` are never renamed. When a name has spaces, capitals, or punctuation
+   (`Puma Peak — Deal Strategy.md`), rename it **without breaking inbound links**:
+   - **Pick a short slug** from `title:` — lowercase, hyphens, ≤ ~5–6 words
+     (`puma-peak-deal-strategy.md`). `lint-vault.sh` prints a suggestion you can shorten.
+   - **Bridge old links first.** Add the note's *current* human name to its frontmatter
+     `aliases:` (e.g. `aliases: ["Puma Peak — Deal Strategy"]`) **before** moving it — so
+     every existing `[[Puma Peak — Deal Strategy]]` still resolves in Obsidian after the
+     rename, with no inbound rewrite needed.
+   - **Move it.** `git mv "Puma Peak — Deal Strategy.md" puma-peak-deal-strategy.md` on
+     your branch (or a live-vault move via the Obsidian MCP when the connector supports it
+     and you're working live by explicit request). Never leave a half-rename.
+   - **Repoint the machine-readable references** that don't ride the alias: this note's
+     `index.md` / `hot.md` entries → `[[puma-peak-deal-strategy]]` (pipe for display if you
+     like — `[[puma-peak-deal-strategy|Puma Peak — Deal Strategy]]`), and any `related:`
+     frontmatter in *other* notes that named the old file.
+   - **One at a time.** On a batch, rename note-by-note and re-run `lint-vault.sh` to watch
+     the offender list shrink and confirm nothing new broke.
+
+8. **Maintain the backbone.** Add or refresh the note's entry in `index.md` (link +
    one-line summary) and append to `log.md`
    (`## [YYYY-MM-DD] normalize | <what changed + why>`).
 
-8. **Report.** Summarize what changed. For a sweep, list each note touched (and any
+9. **Report.** Summarize what changed. For a sweep, list each note touched (and any
    you skipped, with why).
 
 ## What NOT to touch
