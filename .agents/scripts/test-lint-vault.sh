@@ -12,6 +12,7 @@
 #   2. a conforming note (quoted colon value) passes cleanly in every mode
 #   3. a real parser catches structural errors the parser-free fallback can't (by design)
 #   4. docs/ (own-schema tier) is YAML-validated but exempt from the note standard
+#   5. a non-kebab note filename is flagged in the full tier (a kebab name passes)
 #
 # Exits non-zero if any assertion fails.
 set -uo pipefail
@@ -159,6 +160,52 @@ for m in "${MODES[@]}"; do
     ok "[$m] valid non-standard docs/ note passed (no 'missing title' etc.)"
   else
     bad "[$m] wrongly flagged a valid non-standard docs/ note (exit $rc): $out"
+  fi
+done
+
+echo "== 5: non-kebab filename is flagged (full tier); a kebab name is not =="
+# Perfect frontmatter, but the FILENAME has spaces + an ampersand + capitals.
+cat > "$WORK/Bad Name & Thing.md" <<'EOF'
+---
+title:   "Bad Name Thing"
+type:    research
+status:  active
+tags:    [object3, test]
+created: 2026-07-02
+updated: 2026-07-02
+---
+
+# Bad Name Thing
+
+body
+EOF
+# Same perfect frontmatter, but a clean kebab filename — must NOT get a filename flag.
+cat > "$WORK/good-kebab-name.md" <<'EOF'
+---
+title:   "Good Kebab Name"
+type:    research
+status:  active
+tags:    [object3, test]
+created: 2026-07-02
+updated: 2026-07-02
+---
+
+# Good Kebab Name
+
+body
+EOF
+for m in "${MODES[@]}"; do
+  out=$(run "$m" "$WORK/Bad Name & Thing.md"); rc=$?
+  if printf '%s' "$out" | grep -q 'filename not kebab-case' && [ "$rc" -ne 0 ]; then
+    ok "[$m] flagged non-kebab filename (exit $rc)"
+  else
+    bad "[$m] did NOT flag non-kebab filename (exit $rc): $out"
+  fi
+  out=$(run "$m" "$WORK/good-kebab-name.md"); rc=$?
+  if [ "$rc" -eq 0 ] && ! printf '%s' "$out" | grep -q 'filename'; then
+    ok "[$m] kebab filename passed clean"
+  else
+    bad "[$m] wrongly flagged kebab filename (exit $rc): $out"
   fi
 done
 
