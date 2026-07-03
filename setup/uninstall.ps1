@@ -3,12 +3,13 @@
 # ===========================================================================
 # Undoes what setup.ps1 wired up, WITHOUT EVER TOUCHING YOUR NOTES. By default
 # it only DISCONNECTS the integration:
-#   1. removes the mcp-obsidian server from Claude Desktop's config
-#   2. removes the mcp-obsidian server from Claude Code (claude mcp remove)
+#   1. removes every Obsidian MCP server (obsidian-* and legacy mcp-obsidian) from
+#      Claude Desktop's config
+#   2. removes every Obsidian MCP server from Claude Code (claude mcp remove)
 #   3. removes the managed block from ~/.claude/CLAUDE.md (between sentinels)
 #
 # It does NOT delete your vault, and it does NOT uninstall prerequisites
-# (git, jq, uv, Obsidian) - those are general-purpose tools. Your notes are
+# (git, jq, node, Obsidian) - those are general-purpose tools. Your notes are
 # never deleted by this script; it prints the vault location if you want to
 # remove it yourself.
 #
@@ -36,12 +37,15 @@ function Have($c) { return [bool](Get-Command $c -ErrorAction SilentlyContinue) 
 $cfg = "$env:APPDATA\Claude\claude_desktop_config.json"
 if (Test-Path $cfg) {
   $json = Get-Content $cfg -Raw | ConvertFrom-Json
-  if ($json.mcpServers -and $json.mcpServers.PSObject.Properties.Name -contains "mcp-obsidian") {
-    $json.mcpServers.PSObject.Properties.Remove("mcp-obsidian")
+  # Remove every Obsidian MCP server (per-vault obsidian-* AND the legacy mcp-obsidian).
+  $names = @()
+  if ($json.mcpServers) { $names = @($json.mcpServers.PSObject.Properties.Name | Where-Object { $_ -match '^obsidian-' -or $_ -eq 'mcp-obsidian' }) }
+  if ($names.Count -gt 0) {
+    foreach ($n in $names) { $json.mcpServers.PSObject.Properties.Remove($n) }
     $json | ConvertTo-Json -Depth 10 | Set-Content $cfg
-    Say "Removed mcp-obsidian from Claude Desktop config."
+    Say "Removed $($names.Count) Obsidian MCP server(s) from Claude Desktop config."
   } else {
-    Say "mcp-obsidian not present in Claude Desktop config - nothing to do."
+    Say "No Obsidian MCP servers in Claude Desktop config - nothing to do."
   }
 } else {
   Say "No Claude Desktop config at $cfg - skipping."
@@ -49,11 +53,13 @@ if (Test-Path $cfg) {
 
 # ---- 2. Claude Code ------------------------------------------------------
 if (Have claude) {
-  $ok = $false
-  try { claude mcp remove mcp-obsidian --scope user 2>$null; $ok = $true; Say "Removed mcp-obsidian from Claude Code (user scope)." } catch {}
-  if (-not $ok) {
-    try { claude mcp remove mcp-obsidian 2>$null; Say "Removed mcp-obsidian from Claude Code." }
-    catch { Say "mcp-obsidian not registered in Claude Code - nothing to do." }
+  $labels = @(claude mcp list 2>$null | Select-String -Pattern '(obsidian-[a-z0-9-]+|mcp-obsidian)' -AllMatches |
+              ForEach-Object { $_.Matches } | ForEach-Object { $_.Value } | Sort-Object -Unique)
+  if ($labels.Count -gt 0) {
+    foreach ($l in $labels) { claude mcp remove $l --scope user 2>$null; claude mcp remove $l 2>$null }
+    Say "Removed $($labels.Count) Obsidian MCP server(s) from Claude Code."
+  } else {
+    Say "No Obsidian MCP servers in Claude Code - nothing to do."
   }
 } else {
   Say "Claude Code CLI not found - skipping."

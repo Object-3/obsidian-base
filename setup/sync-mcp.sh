@@ -49,11 +49,11 @@ done
 
 # ---- where Obsidian records the vaults you've opened ----------------------
 _obsidian_registry() {
-  if [ "$(lib_platform)" = mac ]; then
-    printf '%s' "$HOME/Library/Application Support/obsidian/obsidian.json"
-  else
-    printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/obsidian/obsidian.json"
-  fi
+  case "$(lib_platform)" in
+    mac) printf '%s' "$HOME/Library/Application Support/obsidian/obsidian.json" ;;
+    win) printf '%s' "${APPDATA:-$HOME/AppData/Roaming}/obsidian/obsidian.json" ;;   # Git Bash
+    *)   printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/obsidian/obsidian.json" ;;
+  esac
 }
 
 # Managed vault = a folder that carries the obsidian-base marker AND has the

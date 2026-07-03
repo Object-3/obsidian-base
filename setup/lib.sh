@@ -34,7 +34,7 @@ if ! declare -F warn >/dev/null 2>&1; then warn() { printf '\033[1;33m  ! %s\033
 if ! declare -F die  >/dev/null 2>&1; then die()  { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }; fi
 if ! declare -F have >/dev/null 2>&1; then have() { command -v "$1" >/dev/null 2>&1; }; fi
 
-lib_platform() { case "$(uname -s)" in Darwin) echo mac ;; Linux) echo linux ;; *) echo other ;; esac; }
+lib_platform() { case "$(uname -s)" in Darwin) echo mac ;; Linux) echo linux ;; MINGW*|MSYS*|CYGWIN*) echo win ;; *) echo other ;; esac; }
 
 # Vault name -> filesystem/label slug (lowercase, [a-z0-9-] only). Also the
 # basis for the per-vault MCP label `obsidian-<slug>`.
@@ -192,11 +192,11 @@ OBSIDIAN_HOST="${OBSIDIAN_HOST:-127.0.0.1}"
 # --- config path helpers (env-overridable for testing) ---------------------
 _cd_config_path() {
   if [ -n "${CLAUDE_DESKTOP_CONFIG:-}" ]; then printf '%s' "$CLAUDE_DESKTOP_CONFIG"; return; fi
-  if [ "$(lib_platform)" = mac ]; then
-    printf '%s' "$HOME/Library/Application Support/Claude/claude_desktop_config.json"
-  else
-    printf '%s' "$HOME/.config/Claude/claude_desktop_config.json"
-  fi
+  case "$(lib_platform)" in
+    mac) printf '%s' "$HOME/Library/Application Support/Claude/claude_desktop_config.json" ;;
+    win) printf '%s' "${APPDATA:-$HOME/AppData/Roaming}/Claude/claude_desktop_config.json" ;;   # Git Bash
+    *)   printf '%s' "$HOME/.config/Claude/claude_desktop_config.json" ;;
+  esac
 }
 _cx_config_path() { printf '%s' "${CODEX_HOME:-$HOME/.codex}/config.toml"; }
 

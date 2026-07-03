@@ -19,6 +19,11 @@ $VaultName   = $env:VAULT_NAME
 $McpClients  = $env:MCP_CLIENTS;  if (-not $McpClients)  { $McpClients = "both" }
 $MirrorSkills = $env:MIRROR_SKILLS; if (-not $MirrorSkills) { $MirrorSkills = "ask" }
 $ObsidianHost = "127.0.0.1"; $ObsidianPort = "27124"
+# Clients reach the Local REST API plugin's own /mcp/ endpoint over the vault's loopback
+# HTTP (insecure) port = HTTPS port - 1. Port lives in the URL, so no OBSIDIAN_PORT (the
+# old uvx mcp-obsidian server ignored it and hardcoded 27124 — broken for a 2nd vault).
+$InsecurePort = [string]([int]$ObsidianPort - 1)
+$McpUrl = "http://127.0.0.1:$InsecurePort/mcp/"
 
 function Say($m)  { Write-Host "==> $m" -ForegroundColor Cyan }
 function Warn($m) { Write-Host "  ! $m" -ForegroundColor Yellow }
@@ -29,7 +34,8 @@ function Winget($id) { if (Have winget) { winget install --id $id -e --accept-so
 Say "Checking prerequisites (winget)..."
 if (-not (Have git))  { Winget "Git.Git" }
 if (-not (Have jq))   { Winget "jqlang.jq" }
-if (-not (Have uv))   { Winget "astral-sh.uv" }
+# node provides npx, which runs the mcp-remote bridge for Claude Desktop.
+if (-not (Have node)) { Winget "OpenJS.NodeJS.LTS" }
 if (-not (Test-Path "$env:LOCALAPPDATA\Obsidian\Obsidian.exe") -and -not (Have obsidian)) { Winget "Obsidian.Obsidian" }
 # refresh PATH for this session
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
@@ -41,6 +47,11 @@ if (-not $VaultName) { $VaultName = Read-Host "Name your knowledge vault" }
 if (-not $VaultName) { $VaultName = "My Knowledge Base" }
 $slug = ($VaultName.ToLower() -replace '[^a-z0-9]+','-').Trim('-')
 $VaultDir = Join-Path $VaultParent $slug
+# Per-vault MCP label `obsidian-<slug>` (matches setup/lib.sh's lib_mcp_label — strips a
+# redundant leading "obsidian" so "Obsidian Puma" -> obsidian-puma, not obsidian-obsidian-puma).
+$labelSlug = ($slug -replace '^obsidian','') -replace '^-',''
+if (-not $labelSlug) { $labelSlug = "vault" }
+$McpLabel = "obsidian-$labelSlug"
 $FreshVault = $false
 if (Test-Path (Join-Path $VaultDir ".git")) {
   Say "Vault already exists at $VaultDir - reusing it."
@@ -140,28 +151,33 @@ if ($McpClients -ne "none") {
     } else {
       $ClaudeDesktopMissing = $true
     }
-    # Resolve uvx to an absolute path for the Desktop config, mirroring setup.sh.
-    # GUI-launched MCP servers may not inherit the user PATH, so a bare "uvx" can
-    # fail to start. (Lower risk on Windows than macOS, but kept consistent.)
-    $uvxBin = (Get-Command uvx -ErrorAction SilentlyContinue).Source; if (-not $uvxBin) { $uvxBin = "uvx" }
+    # Claude Desktop config carries only stdio servers, so it reaches the plugin's HTTP
+    # /mcp/ endpoint through the mcp-remote bridge (key inline). Resolve npx to an absolute
+    # path — GUI-launched servers may not inherit the user PATH, so a bare "npx" can fail.
+    $npxBin = (Get-Command npx -ErrorAction SilentlyContinue).Source; if (-not $npxBin) { $npxBin = "npx" }
     $cfg = "$env:APPDATA\Claude\claude_desktop_config.json"
     New-Item -ItemType Directory -Force -Path (Split-Path $cfg) | Out-Null
     $json = if (Test-Path $cfg) { Get-Content $cfg -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
     if (-not $json.mcpServers) { $json | Add-Member mcpServers ([pscustomobject]@{}) -Force }
-    $json.mcpServers | Add-Member "mcp-obsidian" ([pscustomobject]@{
-      command=$uvxBin; args=@("mcp-obsidian");
-      env=[pscustomobject]@{ OBSIDIAN_API_KEY=$ApiKey; OBSIDIAN_HOST=$ObsidianHost; OBSIDIAN_PORT=$ObsidianPort } }) -Force
-    Say "Wiring MCP into Claude Desktop..."
+    # Eradicate any legacy uvx `mcp-obsidian` entry from a prior setup.
+    if ($json.mcpServers.PSObject.Properties.Name -contains "mcp-obsidian") { $json.mcpServers.PSObject.Properties.Remove("mcp-obsidian") }
+    $json.mcpServers | Add-Member $McpLabel ([pscustomobject]@{
+      command=$npxBin; args=@("-y","mcp-remote",$McpUrl,"--header","Authorization: Bearer $ApiKey","--allow-http") }) -Force
+    Say "Wiring MCP into Claude Desktop ($McpLabel -> $McpUrl)..."
     $json | ConvertTo-Json -Depth 10 | Set-Content $cfg
   }
   if ($McpClients -eq "code" -or $McpClients -eq "both") {
     if (Have claude) {
       $AssistantPresent = $true
-      Say "Wiring MCP into Claude Code..."
-      # --scope user → available across ALL the user's projects, not just this
-      # directory (default scope is "local"). The vault is a consume-from-anywhere
-      # knowledge base, so the MCP must be reachable from every Claude Code session.
-      claude mcp add mcp-obsidian --scope user --env OBSIDIAN_API_KEY=$ApiKey --env OBSIDIAN_HOST=$ObsidianHost --env OBSIDIAN_PORT=$ObsidianPort -- uvx mcp-obsidian
+      Say "Wiring MCP into Claude Code ($McpLabel -> $McpUrl)..."
+      # Claude Code speaks Streamable HTTP natively (key inline) — no bridge needed.
+      # --scope user → available across ALL the user's projects, not just this directory
+      # (default scope is "local"). The vault is a consume-from-anywhere knowledge base,
+      # so the MCP must be reachable from every Claude Code session. Eradicate any legacy
+      # uvx entry first, and clear this label so a re-run refreshes it cleanly.
+      claude mcp remove mcp-obsidian --scope user 2>$null
+      claude mcp remove $McpLabel --scope user 2>$null
+      claude mcp add $McpLabel --scope user --transport http $McpUrl --header "Authorization: Bearer $ApiKey"
     } else {
       $ClaudeCodeMissing = $true
       Warn "Claude Code CLI not found; skipping (install it, then re-run with MCP_CLIENTS=code)."
