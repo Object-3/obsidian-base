@@ -108,7 +108,7 @@ git -c user.name="${GIT_AUTHOR_NAME:-Vault Owner}" -c user.email="${GIT_AUTHOR_E
     commit -q -m "Initial vault from obsidian-base"
 
 # ---- 4. provision plugins on a fresh free port ----------------------------
-have uv || warn "uv not found — the MCP runtime (uvx mcp-obsidian) may not start."
+have npx || warn "Node/npx not found — the mcp-remote bridge (Claude Desktop / Codex) may not start; Claude Code's native HTTP needs neither."
 PORT="$(lib_alloc_free_port)"
 lib_provision_plugins "$VAULT_DIR" "$PORT"
 KEY="$(cat "$VAULT_DIR/.obsidian/.rest-api-key" 2>/dev/null || echo "")"

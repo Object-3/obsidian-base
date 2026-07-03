@@ -50,15 +50,17 @@ Check each; if a check fails, investigate and repair, then re-check:
   `obsidian-local-rest-api/main.js` exist; both listed in `community-plugins.json`.
   If a release download failed, retry, or fetch the latest release assets directly
   from the plugin's GitHub `releases/latest`.
-- **MCP wired**: the key in `.obsidian/.rest-api-key` matches `OBSIDIAN_API_KEY` in the
-  Claude Desktop config (`~/Library/Application Support/Claude/claude_desktop_config.json`
-  on macOS, `%APPDATA%\Claude\claude_desktop_config.json` on Windows) and/or
-  `claude mcp list` shows `mcp-obsidian`. Fix the config if missing — when re-adding
-  to Claude Code, use `claude mcp add mcp-obsidian --scope user …` so the vault is
-  reachable from every project, not just the setup directory.
-- **MCP runtime**: `uvx mcp-obsidian` is resolvable (uv installed). If not, install uv.
+- **MCP wired**: each client points at the vault's Local REST API plugin `/mcp/`
+  endpoint under a vault-named label (`obsidian-<slug>`). `claude mcp list` shows it as
+  `✔ Connected`; the Claude Desktop / Codex configs carry an `mcp-remote` bridge to the
+  same URL. If wiring is missing or drifted, run `./setup/sync-mcp.sh --fix` (the
+  `/doctor` reconciler) rather than hand-editing — it converges every vault into every
+  client and eradicates any leftover legacy `uvx mcp-obsidian` entry.
+- **MCP runtime**: `npx` resolves (Node installed) — it runs the `mcp-remote` bridge for
+  Claude Desktop / Codex. Claude Code speaks HTTP natively and needs neither.
 - **REST API reachable** (after the human enables plugins): the Local REST API answers
-  on `https://127.0.0.1:27124` with the key. If not yet, that's the human's trust click.
+  on `https://127.0.0.1:27124` with the key, and `/mcp/` over the loopback HTTP port. If
+  not yet, that's the human's trust click.
 
 ## 3. Hand off the human-only steps
 First, **is an AI assistant even installed?** The script wires the MCP config but does
