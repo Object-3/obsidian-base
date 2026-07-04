@@ -48,8 +48,9 @@ if (-not $VaultName) { $VaultName = "My Knowledge Base" }
 $slug = ($VaultName.ToLower() -replace '[^a-z0-9]+','-').Trim('-')
 $VaultDir = Join-Path $VaultParent $slug
 # Per-vault MCP label `obsidian-<slug>` (matches setup/lib.sh's lib_mcp_label — strips a
-# redundant leading "obsidian" so "Obsidian Puma" -> obsidian-puma, not obsidian-obsidian-puma).
-$labelSlug = ($slug -replace '^obsidian','') -replace '^-',''
+# leading "obsidian-" THEN a bare "obsidian" so "Obsidian Puma" -> obsidian-puma, and
+# "Obsidian Obsidian" -> obsidian-vault, bit-for-bit with the two-step bash strip).
+$labelSlug = (($slug -replace '^obsidian-','') -replace '^obsidian','') -replace '^-',''
 if (-not $labelSlug) { $labelSlug = "vault" }
 $McpLabel = "obsidian-$labelSlug"
 $FreshVault = $false

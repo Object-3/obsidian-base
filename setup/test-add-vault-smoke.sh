@@ -139,6 +139,20 @@ check "ensure desktop now targets 27123" "jq -r '.mcpServers[\"obsidian-legacy\"
 check "ensure of a correct entry is a no-op" "mcp_ensure claude_desktop obsidian-beta 27126 keyB; jq -r '.mcpServers[\"obsidian-beta\"].args[]' '$CLAUDE_DESKTOP_CONFIG' | grep -q '127.0.0.1:27125/mcp/'"
 for_each_client unwire "obsidian-legacy" >/dev/null 2>&1
 
+echo "== legacy discriminator ignores a label that CONTAINS 'mcp-obsidian' (regression) =="
+# A vault named "MCP Obsidian" produces label obsidian-mcp-obsidian. A CORRECT
+# plugin-endpoint entry under that label must NOT be mistaken for the abandoned uvx
+# server just because its own NAME contains the substring (that was the bug).
+for_each_client wire "obsidian-mcp-obsidian" 27124 "keyM" >/dev/null 2>&1
+check "desktop: substring label NOT flagged legacy"    "! mcp_is_legacy claude_desktop obsidian-mcp-obsidian"
+check "codex: substring label NOT flagged legacy"       "! mcp_is_legacy codex_cli obsidian-mcp-obsidian"
+check "claude code: substring label NOT flagged legacy" "! mcp_is_legacy claude_code obsidian-mcp-obsidian"
+for_each_client unwire "obsidian-mcp-obsidian" >/dev/null 2>&1
+# ...but a REAL uvx entry under the same substring label is still caught (body match):
+printf '\n[mcp_servers.obsidian-mcp-obsidian]\ncommand = "/x/uvx"\nargs = ["mcp-obsidian"]\n' >> "$CODEX_HOME/config.toml"
+check "codex: real uvx under substring label IS legacy"  "mcp_is_legacy codex_cli obsidian-mcp-obsidian"
+mcp_unwire codex_cli obsidian-mcp-obsidian >/dev/null 2>&1
+
 echo "== list / rename / unwire =="
 check "desktop lists obsidian-alpha" "mcp_list claude_desktop | grep -qx obsidian-alpha"
 check "codex lists obsidian-beta"    "mcp_list codex_cli | grep -qx obsidian-beta"

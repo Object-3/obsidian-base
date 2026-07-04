@@ -20,7 +20,7 @@
 # Usage:
 #   ./setup/sync-mcp.sh                 # CHECK: report drift, change nothing (default)
 #   ./setup/sync-mcp.sh --fix           # apply: converge + eradicate legacy
-#   ./setup/sync-mcp.sh --fix --yes     # apply without prompts
+#   ./setup/sync-mcp.sh --fix --yes     # --yes accepted for scripts (no-op; never prompts)
 #   ./setup/sync-mcp.sh [--fix] VAULT…  # restrict to the given vault dir(s)
 #
 # Exit codes (CHECK mode): 0 = already converged, 3 = drift found (fixable).
@@ -35,12 +35,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 have jq || die "jq is required."
 
-MODE=check; ASSUME_YES=""; VAULT_ARGS=()
+MODE=check; VAULT_ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --fix)   MODE=fix ;;
     --check) MODE=check ;;
-    --yes|-y) ASSUME_YES=1 ;;
+    --yes|-y) ;;   # accepted as a no-op: this script never prompts
     -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     -*) die "unknown option: $arg (try --help)" ;;
     *)  VAULT_ARGS+=("$arg") ;;
@@ -116,14 +116,17 @@ backup_configs() {
   [ -z "$_backed_up" ] || return 0
   local ts; ts="$(date +%s)"
   local cd cx; cd="$(_cd_config_path)"; cx="$(_cx_config_path)"
-  [ -f "$cd" ] && cp "$cd" "$cd.bak.syncmcp.$ts"
-  [ -f "$cx" ] && cp "$cx" "$cx.bak.syncmcp.$ts"
+  # Each backup carries the inline bearer key. Keep only the latest (the live config
+  # is the source of truth) so key-bearing copies don't accumulate, and lock perms.
+  rm -f "$cd".bak.syncmcp.* "$cx".bak.syncmcp.* 2>/dev/null || true
+  if [ -f "$cd" ]; then cp "$cd" "$cd.bak.syncmcp.$ts"; chmod 600 "$cd.bak.syncmcp.$ts" 2>/dev/null || true; fi
+  if [ -f "$cx" ]; then cp "$cx" "$cx.bak.syncmcp.$ts"; chmod 600 "$cx.bak.syncmcp.$ts" 2>/dev/null || true; fi
   _backed_up=1
 }
 
 # ===========================================================================
 say "Reconciling Obsidian MCP wiring across all clients ($MODE mode)…"
-DRIFT=0; WIRED=0; VAULTS=0
+DRIFT=0; WIRED=0; VAULTS=0; declare -a CLAIMED_LABELS=()
 
 # de-dupe discovered dirs (registry + repo can overlap); keep managed ones only
 declare -a MANAGED=()
@@ -141,9 +144,21 @@ for vault in "${MANAGED[@]}"; do
   label="$(vault_label "$vault")"
   port="$(vault_port "$vault")"; key="$(vault_key "$vault")"
   if [ -z "$port" ] || [ -z "$key" ]; then
+    DRIFT=$((DRIFT+1))   # unprovisioned vault is unresolved drift, not "converged"
     warn "$vault: missing port or key (plugin not fully provisioned) — skipping. Run setup.sh in it."
     continue
   fi
+  # A vault's label must be unique: lib_mcp_label is many-to-one, so two vaults can
+  # slugify to the same obsidian-<slug>. Wiring the second would silently clobber the
+  # first (and the loop below would then see it "already present" and skip it), so we
+  # count it as drift and skip rather than report a false ✓.
+  case " ${CLAIMED_LABELS[*]-} " in
+    *" $label "*)
+      DRIFT=$((DRIFT+1))
+      warn "$vault: MCP label '$label' already claimed by another vault (two vaults slugify to the same name) — rename one so each gets a unique obsidian-<slug>; skipping to avoid clobbering."
+      continue ;;
+  esac
+  CLAIMED_LABELS+=("$label")
   say "• $label  ($vault)  → http 127.0.0.1:$(lib_insecure_port "$port")/mcp/"
   ensure_insecure_server "$vault" "$port"; ins="$_INS"
   [ "$ins" = off ] && { DRIFT=$((DRIFT+1)); warn "    insecure loopback server is OFF — /mcp/ won't answer over HTTP. Run --fix to enable it (then reload the vault in Obsidian)."; }
