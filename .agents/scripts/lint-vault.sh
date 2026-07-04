@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# lint-vault.sh — deterministic frontmatter conformance check for vault notes.
+# lint-vault.sh — deterministic frontmatter + filename conformance check for vault notes.
 #
-# Flags notes that don't meet the AGENTS.md frontmatter contract: missing/partial
-# frontmatter, INVALID YAML (frontmatter that won't parse — Obsidian then rejects the
-# whole block and renders it as raw text), missing required keys, an out-of-enum
-# type/status, or a missing primary tag. It only checks what a script can check
-# *reliably* — structure (TL;DR…Caveats), voice, and linking are judgment calls left to
-# the `/normalize-vault` skill.
+# Flags notes that don't meet the AGENTS.md contract: missing/partial frontmatter,
+# INVALID YAML (frontmatter that won't parse — Obsidian then rejects the whole block and
+# renders it as raw text), missing required keys, an out-of-enum type/status, a missing
+# primary tag, or a NON-KEBAB filename (spaces/capitals/punctuation — a latent bug for
+# git paths, URLs, llms.txt, and shell args; see AGENTS.md "File naming"). It only checks
+# what a script can check *reliably* — structure (TL;DR…Caveats), voice, and linking are
+# judgment calls left to the `/normalize-vault` skill.
 #
 # Usage:
 #   .agents/scripts/lint-vault.sh                 # scan the whole note area
@@ -17,9 +18,11 @@
 # Exit: 0 = all conform (or nothing to check), 1 = offenders found, 2 = usage error.
 #
 # Scope: TWO tiers.
-#   • Full frontmatter-standard check (required keys, enum type/status, primary tag, and
-#     valid YAML): the note area — vault root + topical folders. Same set the
-#     /normalize-vault skill operates on.
+#   • Full standard check (required keys, enum type/status, primary tag, valid YAML, and
+#     a kebab-case filename): the note area — vault root + topical folders. Same set the
+#     /normalize-vault skill operates on, so every flag it raises has a fixer. The
+#     filename check is full-tier ONLY — docs/plans are owned by the kw-*/ce-* skills
+#     (which already emit kebab slugs) and aren't normalize-vault's to rename.
 #   • YAML-VALIDITY only (does the frontmatter parse at all?): docs/, plans/, and the
 #     backbone index.md + log.md. These carry their OWN schema (kw-*/ce-*), so the note
 #     standard doesn't apply — but broken YAML there still makes Obsidian render the whole
@@ -141,6 +144,13 @@ EOF
   return 0
 }
 
+# Suggest a kebab-case slug for a filename (strips a trailing .md). Used only to make the
+# filename-check message actionable; LC_ALL=C so multibyte punctuation (em-dash, etc.)
+# collapses to a plain hyphen byte-wise instead of tripping the locale.
+slugify() {
+  LC_ALL=C printf '%s' "${1%.md}" | LC_ALL=C tr 'A-Z' 'a-z' | LC_ALL=C sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//'
+}
+
 # Check one note ($1) in a mode ($2): "full" runs the whole frontmatter standard; "yaml"
 # runs ONLY the YAML-parseability check (docs/plans/backbone — own schema, but broken YAML
 # still breaks Obsidian). Echoes a "; "-joined list of problems, or nothing if it's clean.
@@ -173,6 +183,13 @@ check_note() {
     if [ -n "$tagsline" ] && ! printf '%s' "$tagsline" | grep -qw "$primary_tag"; then
       p="${p:+$p; }missing primary tag '$primary_tag'"
     fi
+  fi
+  # Filename must be a kebab-case slug (see AGENTS.md "File naming"). Full tier only:
+  # yaml-tier files (docs/plans/backbone) returned above — they're owned by the kw-*/ce-*
+  # skills and normalize-vault won't rename them, so flagging them would have no fixer.
+  base=$(basename "$f")
+  if ! printf '%s' "$base" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*\.md$'; then
+    p="${p:+$p; }filename not kebab-case (lowercase-with-hyphens.md — try '$(slugify "$base").md')"
   fi
   printf '%s' "$p"; return 0
 }

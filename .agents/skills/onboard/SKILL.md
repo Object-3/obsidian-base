@@ -77,8 +77,9 @@ Then tell the user, plainly:
 Then confirm the agent can list files in the vault via the Obsidian MCP.
 
 ## 4. Mention the optional next steps
-- **Cloud backup** whenever they want it (under their own account or an org):
-  `./setup/connect-github.sh` (or `.ps1`). Not required to use the vault.
+- **Cloud backup** whenever they want it (under their own account or an org): the
+  **`connect-github`** skill (or `./setup/connect-github.sh`/`.ps1` directly). Not
+  required to use the vault.
 - **Confidential material? Set up the Sensitive plane** (only if relevant): if they'll
   keep NDA-bound / third-party / regulated notes, run **`/setup-sensitive-plane`** to back
   the gitignored `_sensitive/` folder with an org-tenant cloud-synced folder — durable and

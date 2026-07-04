@@ -112,8 +112,8 @@ For each durable candidate:
 
 ### 4. Consolidate (multi-category audit)
 
-Beyond `lint-vault.sh`'s frontmatter check, run the **judgment-based audit only an
-LLM/agent can do**, and express each finding as ADD/UPDATE/DELETE/NOOP:
+Beyond `lint-vault.sh`'s frontmatter + filename checks, run the **judgment-based audit
+only an LLM/agent can do**, and express each finding as ADD/UPDATE/DELETE/NOOP:
 
 - **Contradictions / superseded claims** — dispatch the **`stale-knowledge-checker`** agent.
   In an *agent-authored* note, UPDATE (or DELETE if fully superseded). In a *human-authored*
@@ -129,7 +129,9 @@ LLM/agent can do**, and express each finding as ADD/UPDATE/DELETE/NOOP:
   search finds them; run `/normalize-vault`'s **graph-linking pass** to back-fill the primary
   tag + ≥1 link, without otherwise touching their kw schema.
 
-`lint-vault.sh` stays frontmatter-only; this phase is the semantic layer on top.
+`lint-vault.sh` covers the deterministic layer — frontmatter conformance **and** non-kebab
+filenames (`/normalize-vault` renames the offenders safely, links intact — see its rename
+step); this phase is the semantic layer on top.
 
 ### 5. Prune & re-index (backbone)
 
