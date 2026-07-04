@@ -8,17 +8,20 @@
 # entry points stay thin and can't drift apart.
 #
 # It provides:
-#   - lib_slugify / lib_uvx_bin / lib_platform            (small helpers)
+#   - lib_slugify / lib_npx_bin / lib_platform            (small helpers)
 #   - lib_gh_release_dl / lib_provision_plugins           (Obsidian plugin setup)
 #   - lib_alloc_free_port                                 (per-vault port allocation)
-#   - an MCP client-adapter registry:
+#   - an MCP client-adapter registry (wires the Local REST API plugin's own
+#     /mcp/ endpoint — NOT the abandoned uvx mcp-obsidian server; see below):
 #       mcp_client_present <client>
 #       mcp_wire   <client> <label> <port> <key>
 #       mcp_unwire <client> <label>
 #       mcp_exists <client> <label>
+#       mcp_is_legacy <client> <label>         (still the old uvx mcp-obsidian?)
+#       mcp_ensure <client> <label> <port> <key>  (wire | rewire-if-legacy | no-op)
 #       mcp_list   <client>                    (obsidian-* / legacy labels)
 #       mcp_rename <client> <old> <new> <port> <key>   (= wire new + unwire old)
-#       for_each_client <op> <args...>         (op ∈ wire|unwire|rename)
+#       for_each_client <op> <args...>         (op ∈ wire|unwire|rename|ensure)
 #     Clients: claude_desktop | claude_code | codex_cli
 #
 # This file is meant to be SOURCED. It does not set -euo pipefail (that is the
@@ -31,7 +34,7 @@ if ! declare -F warn >/dev/null 2>&1; then warn() { printf '\033[1;33m  ! %s\033
 if ! declare -F die  >/dev/null 2>&1; then die()  { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }; fi
 if ! declare -F have >/dev/null 2>&1; then have() { command -v "$1" >/dev/null 2>&1; }; fi
 
-lib_platform() { case "$(uname -s)" in Darwin) echo mac ;; Linux) echo linux ;; *) echo other ;; esac; }
+lib_platform() { case "$(uname -s)" in Darwin) echo mac ;; Linux) echo linux ;; MINGW*|MSYS*|CYGWIN*) echo win ;; *) echo other ;; esac; }
 
 # Vault name -> filesystem/label slug (lowercase, [a-z0-9-] only). Also the
 # basis for the per-vault MCP label `obsidian-<slug>`.
@@ -47,11 +50,34 @@ lib_mcp_label() {
   printf 'obsidian-%s' "$slug"
 }
 
-# Resolve uvx to an ABSOLUTE path. Claude Desktop and Codex launch stdio MCP
-# servers with a stripped PATH and don't source the shell, so a bare "uvx"
-# (under ~/.local/bin or Homebrew) silently never starts. Claude Code inherits
-# the shell PATH, so a bare "uvx" is fine there.
-lib_uvx_bin() { command -v uvx 2>/dev/null || echo uvx; }
+# Resolve npx to an ABSOLUTE path. Claude Desktop and Codex launch stdio MCP
+# servers with a stripped PATH and don't source the shell, so a bare "npx"
+# silently never starts. Claude Code inherits the shell PATH, so bare "npx" is
+# fine there. (npx runs the `mcp-remote` stdio→HTTP bridge — see below.)
+lib_npx_bin() { command -v npx 2>/dev/null || echo npx; }
+
+# --- the Obsidian MCP endpoint (plugin-native, port-in-the-URL) -------------
+# We no longer wire the third-party `uvx mcp-obsidian` stdio server: it hardcodes
+# port 27124 and ignores OBSIDIAN_PORT, so any 2nd+ vault (which must use a
+# distinct port) could never authenticate. Instead we point every client at the
+# Local REST API plugin's OWN built-in MCP server ("Streamable HTTP at /mcp/",
+# plugin v4+), reached over the vault's loopback HTTP (insecure) port. Because
+# the port lives in the URL, that whole class of bug is impossible, and there is
+# no Python/uvx runtime to install.
+#
+# The insecure (plain-HTTP, 127.0.0.1-only) port is the HTTPS port - 1; the
+# plugin serves /mcp/ there when enableInsecureServer is on (lib_provision_plugins
+# sets it). HTTP-on-loopback avoids the self-signed-cert rejection that blocks
+# HTTPS for Node-based clients, and the API key still authenticates every call.
+lib_insecure_port() { printf '%s' "$(( $1 - 1 ))"; }
+lib_mcp_url()       { printf 'http://127.0.0.1:%s/mcp/' "$(lib_insecure_port "$1")"; }
+# The mcp-remote bridge argv (a JSON/TOML array of strings) for a stdio client.
+# Claude Code speaks HTTP natively and skips the bridge; Claude Desktop and Codex
+# use it because their native HTTP paths can't carry an inline bearer key cleanly.
+lib_bridge_args_json() { # url key -> ["-y","mcp-remote",<url>,"--header","Authorization: Bearer <key>","--allow-http"]
+  jq -cn --arg u "$1" --arg a "Authorization: Bearer $2" \
+    '["-y","mcp-remote",$u,"--header",$a,"--allow-http"]'
+}
 
 # ---- Obsidian plugin provisioning ----------------------------------------
 lib_gh_release_dl() { # repo destdir  (downloads main.js, manifest.json, styles.css from latest release)
@@ -108,25 +134,36 @@ _lib_port_listening() { # port
   return 1
 }
 
-# All OBSIDIAN_PORT values already claimed across every wired client, one per line.
+# Every port already claimed across every wired client, one per line, with its
+# adjacent secure/insecure partner (n-1, n, n+1). We scrape two shapes: the new
+# plugin-endpoint URL (`127.0.0.1:<insecure>/mcp/`) and, for back-compat during
+# migration, any leftover legacy `OBSIDIAN_PORT`. Emitting the ±1 band means a
+# claim on either the secure or insecure port reserves the whole pair.
 _lib_used_ports() {
-  local cfg
-  cfg="$(_cd_config_path)"
-  if [ -f "$cfg" ]; then
-    jq -r '(.mcpServers // {}) | to_entries[] | .value.env.OBSIDIAN_PORT // empty' "$cfg" 2>/dev/null || true
-  fi
-  local toml; toml="$(_cx_config_path)"
-  if [ -f "$toml" ]; then
-    grep -E '^[[:space:]]*OBSIDIAN_PORT[[:space:]]*=' "$toml" 2>/dev/null \
-      | sed -E 's/.*=[[:space:]]*"?([0-9]+)"?.*/\1/' || true
-  fi
-  if have claude; then
-    # Best-effort: claude mcp get prints the env; scrape any OBSIDIAN_PORT it shows.
-    local lbl
-    for lbl in $(mcp_list claude_code 2>/dev/null); do
-      claude mcp get "$lbl" 2>/dev/null | grep -Eo 'OBSIDIAN_PORT[^0-9]*[0-9]+' | grep -Eo '[0-9]+' || true
-    done
-  fi
+  {
+    local cfg toml
+    cfg="$(_cd_config_path)"
+    if [ -f "$cfg" ]; then
+      jq -r '(.mcpServers // {}) | to_entries[] | .value.env.OBSIDIAN_PORT // empty' "$cfg" 2>/dev/null || true
+      grep -Eo '127\.0\.0\.1:[0-9]+/mcp' "$cfg" 2>/dev/null | grep -Eo ':[0-9]+' | tr -d ':' || true
+    fi
+    toml="$(_cx_config_path)"
+    if [ -f "$toml" ]; then
+      grep -E '^[[:space:]]*OBSIDIAN_PORT[[:space:]]*=' "$toml" 2>/dev/null | sed -E 's/.*=[[:space:]]*"?([0-9]+)"?.*/\1/' || true
+      grep -Eo '127\.0\.0\.1:[0-9]+/mcp' "$toml" 2>/dev/null | grep -Eo ':[0-9]+' | tr -d ':' || true
+    fi
+    if have claude; then
+      local lbl out
+      for lbl in $(mcp_list claude_code 2>/dev/null); do
+        out="$(claude mcp get "$lbl" 2>/dev/null)"
+        printf '%s\n' "$out" | grep -Eo 'OBSIDIAN_PORT[^0-9]*[0-9]+' | grep -Eo '[0-9]+' || true
+        printf '%s\n' "$out" | grep -Eo '127\.0\.0\.1:[0-9]+/mcp' | grep -Eo ':[0-9]+' | tr -d ':' || true
+      done
+    fi
+  } 2>/dev/null | while read -r n; do
+    [ -n "$n" ] || continue
+    echo "$((n-1))"; echo "$n"; echo "$((n+1))"
+  done
 }
 
 lib_alloc_free_port() { # -> echoes an even HTTPS port >= 27124
@@ -155,11 +192,11 @@ OBSIDIAN_HOST="${OBSIDIAN_HOST:-127.0.0.1}"
 # --- config path helpers (env-overridable for testing) ---------------------
 _cd_config_path() {
   if [ -n "${CLAUDE_DESKTOP_CONFIG:-}" ]; then printf '%s' "$CLAUDE_DESKTOP_CONFIG"; return; fi
-  if [ "$(lib_platform)" = mac ]; then
-    printf '%s' "$HOME/Library/Application Support/Claude/claude_desktop_config.json"
-  else
-    printf '%s' "$HOME/.config/Claude/claude_desktop_config.json"
-  fi
+  case "$(lib_platform)" in
+    mac) printf '%s' "$HOME/Library/Application Support/Claude/claude_desktop_config.json" ;;
+    win) printf '%s' "${APPDATA:-$HOME/AppData/Roaming}/Claude/claude_desktop_config.json" ;;   # Git Bash
+    *)   printf '%s' "$HOME/.config/Claude/claude_desktop_config.json" ;;
+  esac
 }
 _cx_config_path() { printf '%s' "${CODEX_HOME:-$HOME/.codex}/config.toml"; }
 
@@ -196,16 +233,20 @@ mcp_claude_desktop_exists() { # label
   [ -f "$cfg" ] && jq -e --arg l "$1" '.mcpServers[$l]' "$cfg" >/dev/null 2>&1
 }
 mcp_claude_desktop_wire() { # label port key  (idempotent, never clobbers a different entry)
-  local label="$1" port="$2" key="$3" cfg uvx; cfg="$(_cd_config_path)"; uvx="$(lib_uvx_bin)"
-  [ "$uvx" = uvx ] && warn "uvx not resolvable; Desktop entry '$label' uses bare 'uvx' and may not start until uvx is on PATH."
+  local label="$1" port="$2" key="$3" cfg npx url; cfg="$(_cd_config_path)"; npx="$(lib_npx_bin)"; url="$(lib_mcp_url "$port")"
+  [ "$npx" = npx ] && warn "npx not resolvable; Desktop entry '$label' uses bare 'npx' and may not start until Node/npx is on PATH."
   mkdir -p "$(dirname "$cfg")"; [ -f "$cfg" ] || echo '{}' > "$cfg"
   if mcp_claude_desktop_exists "$label"; then say "Claude Desktop: '$label' already present — leaving as-is." >&2; return 0; fi
-  jq --arg l "$label" --arg k "$key" --arg h "$OBSIDIAN_HOST" --arg p "$port" --arg uvx "$uvx" '
+  # Claude Desktop config carries only stdio servers, so it reaches the plugin's
+  # HTTP /mcp/ endpoint through the mcp-remote bridge (key inline in the args).
+  if jq --arg l "$label" --arg cmd "$npx" --argjson args "$(lib_bridge_args_json "$url" "$key")" '
     .mcpServers = (.mcpServers // {}) |
-    .mcpServers[$l] = {command:$uvx, args:["mcp-obsidian"],
-      env:{OBSIDIAN_API_KEY:$k, OBSIDIAN_HOST:$h, OBSIDIAN_PORT:$p}}' \
-    "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg"
-  say "Claude Desktop: wired '$label' (port $port)." >&2
+    .mcpServers[$l] = {command:$cmd, args:$args}' \
+    "$cfg" > "$cfg.tmp" && mv "$cfg.tmp" "$cfg"; then
+    say "Claude Desktop: wired '$label' → $url (mcp-remote bridge)." >&2
+  else
+    rm -f "$cfg.tmp"; warn "Claude Desktop: failed to write $cfg (jq parse error?) — '$label' NOT wired."; return 1
+  fi
 }
 mcp_claude_desktop_unwire() { # label
   local cfg; cfg="$(_cd_config_path)"
@@ -221,14 +262,14 @@ mcp_claude_desktop_list() { # -> obsidian-* / legacy labels
 # ---------------------------- Claude Code (CLI) ----------------------------
 mcp_claude_code_exists() { have claude && claude mcp get "$1" >/dev/null 2>&1; }
 mcp_claude_code_wire() { # label port key
-  local label="$1" port="$2" key="$3"
+  local label="$1" port="$2" key="$3" url; url="$(lib_mcp_url "$port")"
   have claude || { warn "Claude Code CLI not found; skipping '$label'."; return 0; }
   if mcp_claude_code_exists "$label"; then say "Claude Code: '$label' already present — leaving as-is." >&2; return 0; fi
-  # bare uvx: Claude Code inherits the shell PATH. --scope user → every project.
-  claude mcp add "$label" --scope user \
-    --env OBSIDIAN_API_KEY="$key" --env OBSIDIAN_HOST="$OBSIDIAN_HOST" --env OBSIDIAN_PORT="$port" \
-    -- uvx mcp-obsidian >/dev/null 2>&1 \
-    && say "Claude Code: wired '$label' (port $port)." >&2 \
+  # Claude Code speaks Streamable HTTP natively and carries the bearer key inline
+  # — no bridge needed. --scope user → every project.
+  claude mcp add "$label" --scope user --transport http "$url" \
+    --header "Authorization: Bearer $key" >/dev/null 2>&1 \
+    && say "Claude Code: wired '$label' → $url (native http)." >&2 \
     || warn "couldn't add '$label' to Claude Code (add it manually: see SETUP.md)"
 }
 mcp_claude_code_unwire() { # label
@@ -249,23 +290,24 @@ mcp_codex_cli_exists() { # label
   [ -f "$toml" ] && grep -Eq "^[[:space:]]*\[mcp_servers\.$1\][[:space:]]*$" "$toml"
 }
 mcp_codex_cli_wire() { # label port key
-  local label="$1" port="$2" key="$3" toml uvx; toml="$(_cx_config_path)"; uvx="$(lib_uvx_bin)"
+  local label="$1" port="$2" key="$3" toml npx url; toml="$(_cx_config_path)"; npx="$(lib_npx_bin)"; url="$(lib_mcp_url "$port")"
   have codex || { warn "Codex CLI not found; skipping '$label'."; return 0; }
-  [ "$uvx" = uvx ] && warn "uvx not resolvable; Codex entry '$label' uses bare 'uvx' and may not start until uvx is on PATH."
+  [ "$npx" = npx ] && warn "npx not resolvable; Codex entry '$label' uses bare 'npx' and may not start until Node/npx is on PATH."
   mkdir -p "$(dirname "$toml")"; [ -f "$toml" ] || : > "$toml"
   if mcp_codex_cli_exists "$label"; then say "Codex: '$label' already present — leaving as-is." >&2; return 0; fi
+  # Codex's native HTTP transport can only read the bearer key from an env var;
+  # the mcp-remote bridge keeps the key inline in the table (no env-var to manage).
   # separate from any prior content with a blank line when the file is non-empty
   [ -s "$toml" ] && printf '\n' >> "$toml"
-  {
+  if {
     printf '[mcp_servers.%s]\n' "$label"
-    printf 'command = "%s"\n' "$uvx"
-    printf 'args = ["mcp-obsidian"]\n\n'
-    printf '[mcp_servers.%s.env]\n' "$label"
-    printf 'OBSIDIAN_API_KEY = "%s"\n' "$key"
-    printf 'OBSIDIAN_HOST = "%s"\n' "$OBSIDIAN_HOST"
-    printf 'OBSIDIAN_PORT = "%s"\n' "$port"
-  } >> "$toml"
-  say "Codex: wired '$label' (port $port)." >&2
+    printf 'command = "%s"\n' "$npx"
+    printf 'args = ["-y", "mcp-remote", "%s", "--header", "Authorization: Bearer %s", "--allow-http"]\n' "$url" "$key"
+  } >> "$toml"; then
+    say "Codex: wired '$label' → $url (mcp-remote bridge)." >&2
+  else
+    warn "Codex: failed to write $toml — '$label' NOT wired."; return 1
+  fi
 }
 mcp_codex_cli_unwire() { # label — remove [mcp_servers.<label>] and its sub-tables, keep the rest
   local label="$1" toml; toml="$(_cx_config_path)"
@@ -285,14 +327,61 @@ mcp_codex_cli_list() {
     | sed -E 's/^\[mcp_servers\.//; s/\]$//' | sort -u || true
 }
 
+# --------- legacy-shape detection (the abandoned uvx mcp-obsidian server) ---
+# True when <label> exists on the client but is still wired to the old
+# `uvx mcp-obsidian` stdio server (the one that hardcodes port 27124). The
+# discriminator is the literal string "mcp-obsidian" in the entry's command/args
+# (NOT the label) — the new plugin-endpoint shape uses mcp-remote / native http and
+# never contains it. Scoping the match to the entry body, not its name, avoids a
+# false positive on a vault whose own label legitimately contains "mcp-obsidian"
+# (e.g. a vault named "MCP Obsidian" → label `obsidian-mcp-obsidian`).
+# sync-mcp uses these to REPLACE stale entries in place, not just detect them.
+mcp_claude_desktop_is_legacy() { # label
+  local cfg; cfg="$(_cd_config_path)"; [ -f "$cfg" ] || return 1
+  jq -e --arg l "$1" '[(.mcpServers[$l].command // "")] + (.mcpServers[$l].args // []) | any(test("mcp-obsidian"))' "$cfg" >/dev/null 2>&1
+}
+mcp_claude_code_is_legacy() { # label
+  have claude || return 1
+  # Scope the match to the entry body, not the echoed label: drop any line that
+  # contains the label itself (a label like `obsidian-mcp-obsidian` would otherwise
+  # false-positive), then look for the uvx server's "mcp-obsidian" command/arg.
+  claude mcp get "$1" 2>/dev/null | grep -vF -- "$1" | grep -q 'mcp-obsidian'
+}
+mcp_codex_cli_is_legacy() { # label
+  local toml; toml="$(_cx_config_path)"; [ -f "$toml" ] || return 1
+  awk -v pfx="mcp_servers.$1" '
+    function tname(l,  s){ s=l; sub(/^\[\[?/,"",s); sub(/\]\]?.*$/,"",s); gsub(/^[ \t]+|[ \t]+$/,"",s); return s }
+    /^[ \t]*\[/ { t=tname($0); inb = (t==pfx || index(t, pfx ".")==1); next }
+    inb && /mcp-obsidian/ { found=1 }
+    END { exit(found?0:1) }
+  ' "$toml"
+}
+
 # ------------------------------- dispatch ----------------------------------
-mcp_exists() { "mcp_${1}_exists" "$2"; }
-mcp_wire()   { "mcp_${1}_wire"   "$2" "$3" "$4"; }
-mcp_unwire() { "mcp_${1}_unwire" "$2"; }
-mcp_list()   { "mcp_${1}_list"; }
+mcp_exists()    { "mcp_${1}_exists"    "$2"; }
+mcp_wire()      { "mcp_${1}_wire"      "$2" "$3" "$4"; }
+mcp_unwire()    { "mcp_${1}_unwire"    "$2"; }
+mcp_list()      { "mcp_${1}_list"; }
+mcp_is_legacy() { "mcp_${1}_is_legacy" "$2"; }
 mcp_rename() { # client old new port key  == wire new + unwire old (uniform across clients)
   local client="$1" old="$2" new="$3" port="$4" key="$5"
   mcp_wire "$client" "$new" "$port" "$key" && mcp_unwire "$client" "$old"
+}
+# Converge <label> on <client> to the CURRENT plugin-endpoint shape for port/key:
+#   absent → wire; legacy uvx-mcp-obsidian shape → rewire; already-correct → no-op.
+# This is the idempotent primitive sync-mcp/doctor run for every (vault × client).
+mcp_ensure() { # client label port key
+  local client="$1" label="$2" port="$3" key="$4"
+  if mcp_exists "$client" "$label"; then
+    if mcp_is_legacy "$client" "$label"; then
+      say "$client: '$label' is the legacy uvx server — rewiring to the plugin /mcp/ endpoint." >&2
+      mcp_unwire "$client" "$label" && mcp_wire "$client" "$label" "$port" "$key"
+    else
+      say "$client: '$label' already on the plugin endpoint — leaving as-is." >&2
+    fi
+  else
+    mcp_wire "$client" "$label" "$port" "$key"
+  fi
 }
 
 # for_each_client <op> <args...> — runs <op> on every PRESENT client, skipping

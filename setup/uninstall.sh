@@ -10,7 +10,7 @@
 # (Removing just ONE vault's wiring is not offered — this disconnects them all.)
 #
 # It does NOT delete your vault, and it does NOT uninstall prerequisites
-# (git, jq, uv, Obsidian, Homebrew) — those are general-purpose tools you may
+# (git, jq, node, Obsidian, Homebrew) — those are general-purpose tools you may
 # rely on elsewhere. Your notes are never deleted by this script. If you ever
 # want the vault gone, delete the folder yourself — it prints the location.
 #

@@ -95,6 +95,10 @@ Two things to know so both vaults work at once:
 (Just want to rename the existing connection without adding a vault?
 Run `./setup/migrate-mcp-names.sh`.)
 
+(Vaults showing up in one app but not another, or a connection erroring / "off air"?
+Run `./setup/sync-mcp.sh` — or ask your assistant to **"run the doctor"** — to reconcile
+every vault into every AI client and repair broken wiring.)
+
 ## Reach a vault from ChatGPT or Claude on the web (optional, advanced)
 
 The setup above is **local-first** — your vault stays on your computer and your

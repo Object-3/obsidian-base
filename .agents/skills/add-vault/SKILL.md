@@ -1,6 +1,6 @@
 ---
 name: add-vault
-description: Create an ADDITIONAL empty knowledge vault with the exact same obsidian-base setup, beside an existing one, and wire it into your AI clients under its own name — so multiple topic vaults (e.g. "Obsidian Strategy" and "Obsidian Puma") are reachable at the same time. Use when the user says "add another vault", "second vault", "new topic knowledge base", "spin up another vault", "I want a separate vault for X", or asks how to have more than one base vault. Drives setup/add-vault.sh; also migrates the legacy single `mcp-obsidian` connection to a per-vault name.
+description: Create an ADDITIONAL empty knowledge vault with the exact same obsidian-base setup, beside an existing one, and wire it into your AI clients under its own name — so multiple topic vaults (e.g. "Obsidian Strategy" and "Obsidian Puma") are reachable at the same time. Use when the user says "add another vault", "second vault", "new topic knowledge base", "spin up another vault", "I want a separate vault for X", or asks how to have more than one vault (knowledge base). Drives setup/add-vault.sh; also migrates the legacy single `mcp-obsidian` connection to a per-vault name.
 ---
 
 # Add another vault beside this one

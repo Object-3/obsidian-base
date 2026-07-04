@@ -85,10 +85,12 @@ chk "legacy renamed → obsidian-strategy (codex)"   "mcp_exists codex_cli obsid
 chk "new obsidian-puma wired (desktop)"            "mcp_exists claude_desktop obsidian-puma"
 chk "new obsidian-puma wired (claude code)"        "mcp_exists claude_code obsidian-puma"
 chk "new obsidian-puma wired (codex)"              "mcp_exists codex_cli obsidian-puma"
-sport="$(jq -r '.mcpServers["obsidian-strategy"].env.OBSIDIAN_PORT' "$CLAUDE_DESKTOP_CONFIG")"
-pport="$(jq -r '.mcpServers["obsidian-puma"].env.OBSIDIAN_PORT' "$CLAUDE_DESKTOP_CONFIG")"
-chk "existing vault keeps port 27124"              "[ '$sport' = 27124 ]"
-chk "new vault got a distinct free port (27126)"   "[ '$pport' = 27126 ]"
+# the plugin endpoint carries the port in the /mcp/ URL (secure port's insecure partner):
+# strategy 27124 → 27123, puma 27126 → 27125.
+sport="$(jq -r '.mcpServers["obsidian-strategy"].args // [] | join(" ")' "$CLAUDE_DESKTOP_CONFIG")"
+pport="$(jq -r '.mcpServers["obsidian-puma"].args // [] | join(" ")' "$CLAUDE_DESKTOP_CONFIG")"
+chk "existing vault keeps port 27124 (→ 27123/mcp/)" "printf %s \"\$sport\" | grep -q '127.0.0.1:27123/mcp/'"
+chk "new vault got a distinct free port (→ 27125/mcp/)" "printf %s \"\$pport\" | grep -q '127.0.0.1:27125/mcp/'"
 chk "new vault data.json port = 27126"             "[ \"\$(jq -r .port '$SB/obsidian-puma/.obsidian/plugins/obsidian-local-rest-api/data.json')\" = 27126 ]"
 chk "new vault personalized (name filled)"         "grep -q '\"Obsidian Puma\"' '$SB/obsidian-puma/.agents/vault-profile.md'"
 # Vault-creation hygiene: the first commit must already hold real values on `main` —

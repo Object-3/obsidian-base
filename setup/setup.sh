@@ -3,7 +3,7 @@
 # obsidian-base — clean-slate, LOCAL-FIRST onboarding (macOS / Linux)
 # ===========================================================================
 # Run on a brand-new machine. No GitHub account or prior tools required. It:
-#   1. installs prerequisites (Homebrew if missing, git, jq, Obsidian, uv)
+#   1. installs prerequisites (Homebrew if missing, git, jq, Obsidian, node)
 #   2. creates a LOCAL vault from the base template (no GitHub needed)
 #   3. wires the Obsidian MCP into Claude Desktop and/or Claude Code
 #   4. opens the vault in Obsidian
@@ -24,7 +24,7 @@ MCP_CLIENTS="${MCP_CLIENTS:-all}"            # all | desktop | code | codex | bo
 MIRROR_SKILLS="${MIRROR_SKILLS:-ask}"        # ask | yes | no — also install skills into user-scope (~/.claude, ~/.agents) so they work in EVERY project
 OBSIDIAN_HOST="${OBSIDIAN_HOST:-127.0.0.1}"
 OBSIDIAN_PORT="${OBSIDIAN_PORT:-}"           # empty ⇒ auto-allocate the next free port (27124+); set to force a specific HTTPS port
-SKIP_PREREQS="${SKIP_PREREQS:-}"             # set=1 to skip installing brew/git/jq/uv/Obsidian
+SKIP_PREREQS="${SKIP_PREREQS:-}"             # set=1 to skip installing brew/git/jq/node/Obsidian
 NO_OPEN="${NO_OPEN:-}"                        # set=1 to not launch Obsidian at the end
 CLAUDE_DESKTOP_CONFIG="${CLAUDE_DESKTOP_CONFIG:-}"   # override Claude Desktop config path (testing)
 ASSUME_YES=""; [ "${1:-}" = "--yes" ] && ASSUME_YES=1
@@ -60,14 +60,15 @@ install_prereqs() {
       [ -x /opt/homebrew/bin/brew ] && eval "$(/opt/homebrew/bin/brew shellenv)"
       [ -x /usr/local/bin/brew ]    && eval "$(/usr/local/bin/brew shellenv)"
     fi
-    local pkgs=(git jq uv) ; for p in "${pkgs[@]}"; do have "$p" || { say "brew install $p"; brew install "$p"; }; done
+    # node provides npx, which runs the mcp-remote bridge for Claude Desktop / Codex.
+    local pkgs=(git jq node) ; for p in "${pkgs[@]}"; do have "$p" || { say "brew install $p"; brew install "$p"; }; done
     have obsidian || [ -d "/Applications/Obsidian.app" ] || { say "Installing Obsidian…"; brew install --cask obsidian; }
   else
     # Linux: best-effort via apt; otherwise ask the user to install manually.
     if have apt-get; then
-      sudo apt-get update -y && sudo apt-get install -y git jq curl
+      sudo apt-get update -y && sudo apt-get install -y git jq curl nodejs npm
     fi
-    have uv || curl -LsSf https://astral.sh/uv/install.sh | sh
+    have npx || warn "Node/npx not found — install Node.js so the mcp-remote bridge (Claude Desktop / Codex) can start. Claude Code's native HTTP needs neither."
     [ -d "$HOME/.local/share/applications" ] || true
     warn "On Linux, install Obsidian from https://obsidian.md/download if it isn't already."
   fi
@@ -164,7 +165,7 @@ provision_plugins() {
 # via the lib adapter registry (Claude Desktop, Claude Code, Codex CLI).
 configure_mcp() {
   [ "$MCP_CLIENTS" = none ] && return
-  have uv || warn "uv not found — the MCP runtime (uvx mcp-obsidian) may not start."
+  have npx || warn "Node/npx not found — the mcp-remote bridge (Claude Desktop / Codex) may not start; Claude Code's native HTTP needs neither."
   local key; key="$(cat "$VAULT_DIR/.obsidian/.rest-api-key" 2>/dev/null || echo "")"
   [ -n "$key" ] || { warn "no REST API key; skipping MCP wiring"; return; }
   local label; label="$(lib_mcp_label "$VAULT_NAME")"
