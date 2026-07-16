@@ -256,17 +256,23 @@ if [ -f "$LOCAL_MANIFEST" ]; then
   echo "merged $(jq '.sources | length' "$LOCAL_MANIFEST") local source(s) from skill-sources.local.json"
 fi
 
-# 1) Remove artifacts from the previous run (clean update; only locked paths,
-#    so hand-made skills/agents placed in the canonical dirs are never touched).
-#    First sweep any leftover atomic-swap staging dirs from a crashed prior run
-#    (safe now that we hold the lock — no live run can own one).
+# 1) Sweep leftover atomic-swap staging dirs from a crashed prior run (safe now that we
+#    hold the lock — no live run can own one). We deliberately do NOT tear down the
+#    previously-vendored skills/agents here: that reconciliation is DEFERRED until after a
+#    known-good fetch (see the self-heal guard below), so a blocked/offline download (e.g.
+#    codeload 403 in a locked-down container) can't gut the tree. Only locked paths are
+#    ever pruned, so hand-made skills/agents in the canonical dirs are never touched.
 find "$CANON_SKILLS" -maxdepth 1 -name '.*.tmp.*' -exec rm -rf {} + 2>/dev/null || true
+# Remember the previously-vendored set so a *successful* resync can prune entries it no
+# longer produces — but DON'T delete anything yet. The per-skill atomic swap below already
+# replaces each refetched skill in place, so nothing stale survives a clean run.
+OLD_SKILLS=(); OLD_AGENTS=()
 if [ -f "$LOCK" ]; then
-  while IFS= read -r d; do [ -n "$d" ] && rm -rf "$CANON_SKILLS/$d"; done < <(jq -r '.skills[]?' "$LOCK")
-  while IFS= read -r f; do [ -n "$f" ] && rm -f  "$CANON_AGENTS/$f"; done < <(jq -r '.agents[]?' "$LOCK")
+  while IFS= read -r d; do [ -n "$d" ] && OLD_SKILLS+=("$d"); done < <(jq -r '.skills[]?' "$LOCK")
+  while IFS= read -r f; do [ -n "$f" ] && OLD_AGENTS+=("$f"); done < <(jq -r '.agents[]?' "$LOCK")
 fi
 
-VSKILLS=(); VAGENTS=()
+VSKILLS=(); VAGENTS=(); FETCH_FAILURES=0
 
 fetch() { # repo ref -> echoes extracted dir, or non-zero on failure
   local repo="$1" ref="$2" dest="$TMP/${repo//\//_}__$ref"
@@ -294,7 +300,7 @@ for i in $(seq 0 $((count - 1))); do
   for r in "$ref" main master; do
     if src=$(fetch "$repo" "$r"); then break; else src=""; fi
   done
-  [ -z "$src" ] && { echo "   ! download failed; skipping"; continue; }
+  [ -z "$src" ] && { echo "   ! download failed; keeping last-good copy for $name"; FETCH_FAILURES=$((FETCH_FAILURES+1)); continue; }
 
   if [ -d "$src/$spath" ]; then
     while IFS= read -r skfile; do
@@ -320,6 +326,31 @@ for i in $(seq 0 $((count - 1))); do
     done < <(find "$src/$apath" -type f -name '*.md' | sort)
   fi
 done
+
+# --- self-heal guard: bail out of every destructive/rewrite step on total failure ---
+# A resync that vendored NOTHING (offline / blocked host / expired auth) is a NO-OP: the
+# last committed skills, lock, and INDEX stay authoritative and self-heal on the next run
+# with connectivity. We deliberately do NOT touch the stamp here, so the stale-check
+# retries next session instead of waiting out the 7-day window.
+if [ "${#VSKILLS[@]}" -eq 0 ] && [ "${#VAGENTS[@]}" -eq 0 ] && [ "$(jq '.sources | length' "$MANIFEST")" -gt 0 ]; then
+  echo "!! no sources fetched (offline / blocked / auth?) — leaving vendored skills, lock, and INDEX untouched." >&2
+  exit 0
+fi
+
+# Reconcile: prune skills/agents that were vendored before but this run no longer produced
+# — ONLY when every source fetched cleanly. A partial failure keeps the possibly-stale
+# entries (harmless) rather than risk deleting a source's skills on a transient blip.
+if [ "$FETCH_FAILURES" -eq 0 ]; then
+  for d in "${OLD_SKILLS[@]:-}"; do
+    [ -n "$d" ] || continue
+    printf '%s\n' "${VSKILLS[@]:-}" | grep -qxF -- "$d" || rm -rf "$CANON_SKILLS/$d"
+  done
+  for f in "${OLD_AGENTS[@]:-}"; do
+    [ -n "$f" ] || continue
+    printf '%s\n' "${VAGENTS[@]:-}" | grep -qxF -- "$f" || rm -f "$CANON_AGENTS/$f"
+  done
+fi
+# --- end self-heal guard ---
 
 # 2a) Self-contain vendored skills: rewrite namespaced plugin agent IDs
 #     (e.g. `compound-knowledge:research:stale-knowledge-checker`) down to the
