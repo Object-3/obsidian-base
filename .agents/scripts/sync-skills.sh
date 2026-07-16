@@ -256,17 +256,23 @@ if [ -f "$LOCAL_MANIFEST" ]; then
   echo "merged $(jq '.sources | length' "$LOCAL_MANIFEST") local source(s) from skill-sources.local.json"
 fi
 
-# 1) Remove artifacts from the previous run (clean update; only locked paths,
-#    so hand-made skills/agents placed in the canonical dirs are never touched).
-#    First sweep any leftover atomic-swap staging dirs from a crashed prior run
-#    (safe now that we hold the lock — no live run can own one).
+# 1) Sweep leftover atomic-swap staging dirs from a crashed prior run (safe now that we
+#    hold the lock — no live run can own one). We deliberately do NOT tear down the
+#    previously-vendored skills/agents here: that reconciliation is DEFERRED until after a
+#    known-good fetch (see the self-heal guard below), so a blocked/offline download (e.g.
+#    codeload 403 in a locked-down container) can't gut the tree. Only locked paths are
+#    ever pruned, so hand-made skills/agents in the canonical dirs are never touched.
 find "$CANON_SKILLS" -maxdepth 1 -name '.*.tmp.*' -exec rm -rf {} + 2>/dev/null || true
+# Remember the previously-vendored set so a *successful* resync can prune entries it no
+# longer produces — but DON'T delete anything yet. The per-skill atomic swap below already
+# replaces each refetched skill in place, so nothing stale survives a clean run.
+OLD_SKILLS=(); OLD_AGENTS=()
 if [ -f "$LOCK" ]; then
-  while IFS= read -r d; do [ -n "$d" ] && rm -rf "$CANON_SKILLS/$d"; done < <(jq -r '.skills[]?' "$LOCK")
-  while IFS= read -r f; do [ -n "$f" ] && rm -f  "$CANON_AGENTS/$f"; done < <(jq -r '.agents[]?' "$LOCK")
+  while IFS= read -r d; do [ -n "$d" ] && OLD_SKILLS+=("$d"); done < <(jq -r '.skills[]?' "$LOCK")
+  while IFS= read -r f; do [ -n "$f" ] && OLD_AGENTS+=("$f"); done < <(jq -r '.agents[]?' "$LOCK")
 fi
 
-VSKILLS=(); VAGENTS=()
+VSKILLS=(); VAGENTS=(); FETCH_FAILURES=0
 
 fetch() { # repo ref -> echoes extracted dir, or non-zero on failure
   local repo="$1" ref="$2" dest="$TMP/${repo//\//_}__$ref"
@@ -289,12 +295,13 @@ for i in $(seq 0 $((count - 1))); do
   inc=$(jq -r ".sources[$i].include // [] | .[]" "$MANIFEST" | paste -sd'|' -)
   [ -n "$inc" ] && inc="|$inc|"
   echo ">> $name  ($repo @ $ref)"
+  produced=0   # skills+agents this source contributed; 0 => failed/misconfigured source
 
   src=""
   for r in "$ref" main master; do
     if src=$(fetch "$repo" "$r"); then break; else src=""; fi
   done
-  [ -z "$src" ] && { echo "   ! download failed; skipping"; continue; }
+  [ -z "$src" ] && { echo "   ! download failed; keeping last-good copy for $name"; FETCH_FAILURES=$((FETCH_FAILURES+1)); continue; }
 
   if [ -d "$src/$spath" ]; then
     while IFS= read -r skfile; do
@@ -307,7 +314,7 @@ for i in $(seq 0 $((count - 1))); do
       stage="$CANON_SKILLS/.$base.tmp.$$"
       rm -rf "$stage"; cp -R "$sdir" "$stage"
       rm -rf "$CANON_SKILLS/$base"; mv "$stage" "$CANON_SKILLS/$base"
-      VSKILLS+=("$base"); echo "   skill: $base"
+      VSKILLS+=("$base"); produced=$((produced+1)); echo "   skill: $base"
     done < <(find "$src/$spath" -type f -name 'SKILL.md' | sort)
   else
     echo "   ! skillsPath '$spath' not found in repo"
@@ -316,10 +323,52 @@ for i in $(seq 0 $((count - 1))); do
   if [ -n "$apath" ] && [ -d "$src/$apath" ]; then
     while IFS= read -r af; do
       b=$(basename "$af"); cp "$af" "$CANON_AGENTS/$b"
-      VAGENTS+=("$b"); echo "   agent: $b"
+      VAGENTS+=("$b"); produced=$((produced+1)); echo "   agent: $b"
     done < <(find "$src/$apath" -type f -name '*.md' | sort)
   fi
+
+  # A source that downloaded but contributed NOTHING (moved skillsPath, a bad ref that
+  # still resolved to a tarball, or an include list that filtered everything out) is a
+  # FAILURE for prune-gating — not a signal to delete its last-good skills. Count it like
+  # a download failure so the reconcile below is skipped and the total-failure guard can
+  # catch an all-sources-empty run. (An agents-only source still counts as producing.)
+  if [ "$produced" -eq 0 ]; then
+    echo "   ! $name yielded no skills/agents; keeping last-good copy"
+    FETCH_FAILURES=$((FETCH_FAILURES+1))
+  fi
 done
+
+# --- self-heal guard: skip destructive/rewrite steps when nothing was vendored ----------
+# A resync that vendored NOTHING (every source failed to download or yielded no skills:
+# offline / blocked host / expired auth / a moved skillsPath or ref) must be a NO-OP for the
+# committed state — keep the last-good skills, lock, INDEX, and stamp exactly as they are so
+# the next run with connectivity self-heals. The stamp is deliberately left stale so the
+# SessionStart stale-check retries next session instead of waiting out the 7-day window.
+# Rather than exit here, we set a flag: the LOCAL, network-independent repairs still run
+# below (the tool pointers), and an explicit --user-scope mirror still runs from the
+# committed lock — only the network-derived rewrites (INDEX, lock, stamp) are skipped.
+TOTAL_FAILURE=""
+if [ "${#VSKILLS[@]}" -eq 0 ] && [ "${#VAGENTS[@]}" -eq 0 ] && [ "$count" -gt 0 ]; then
+  echo "!! vendored nothing this run (offline / blocked / auth, or every source's skillsPath/ref is wrong) — keeping the last-good skills, lock, INDEX, and stamp; refreshing local pointers only." >&2
+  TOTAL_FAILURE=1
+fi
+
+# Reconcile: prune skills/agents that were vendored before but this run no longer produced
+# — ONLY when EVERY source fetched cleanly (FETCH_FAILURES==0, which also excludes the
+# total-failure case). A partial failure keeps the blipped source's last-good copy rather
+# than risk deleting it on a transient blip; step 4 then re-locks whatever survives on disk
+# so it stays tracked and a later clean run can reconcile it.
+if [ "$FETCH_FAILURES" -eq 0 ]; then
+  for d in "${OLD_SKILLS[@]:-}"; do
+    [ -n "$d" ] || continue
+    printf '%s\n' "${VSKILLS[@]:-}" | grep -qxF -- "$d" || rm -rf "$CANON_SKILLS/$d"
+  done
+  for f in "${OLD_AGENTS[@]:-}"; do
+    [ -n "$f" ] || continue
+    printf '%s\n' "${VAGENTS[@]:-}" | grep -qxF -- "$f" || rm -f "$CANON_AGENTS/$f"
+  done
+fi
+# --- end self-heal guard ---
 
 # 2a) Self-contain vendored skills: rewrite namespaced plugin agent IDs
 #     (e.g. `compound-knowledge:research:stale-knowledge-checker`) down to the
@@ -376,7 +425,10 @@ print(f"normalize: flattened agent refs in {changed} of {len(targets)} vendored 
 PY
 fi
 
-# 2) Auto-generate the skills index (agent-agnostic discovery surface).
+# 2) Auto-generate the skills index (agent-agnostic discovery surface). Skipped on a
+#    total-failure run so the committed INDEX (and its date stamp) isn't churned when
+#    nothing changed on disk.
+if [ -z "$TOTAL_FAILURE" ]; then
 python3 - "$CANON_SKILLS" "$INDEX" <<'PY'
 import os, sys, re, datetime
 skills_dir, out = sys.argv[1], sys.argv[2]
@@ -412,8 +464,13 @@ with open(out, "w", encoding="utf-8") as f:
         f.write(f"| `/{cmd}` | {desc} |\n")
 print(f"index: {len(rows)} skills")
 PY
+fi
+# --- end index (skipped entirely on a total-failure run) ---
 
-# 3) Create/refresh tool pointers (symlink, else automatic copy fallback).
+# 3) Create/refresh tool pointers (symlink, else automatic copy fallback). Runs on EVERY
+#    run — including a total-failure one — because repairing a pointer is a local, network-
+#    independent operation, and a sync the SessionStart hook fired *because a pointer was
+#    broken* must still fix it when offline.
 make_pointer() { # relative_target  link_path  canonical_abs
   local rel="$1" link="$ROOT/$2" canon="$3"
   rm -rf "$link"; mkdir -p "$(dirname "$link")"
@@ -433,17 +490,38 @@ for spec in "${POINTERS[@]}"; do
   make_pointer "$rel" "$link" "$canon"
 done
 
-# 4) Lock + timestamp
+# 4) Lock + timestamp. Skipped on a total-failure run so the committed lock/stamp stay
+#    authoritative. The lock records what is ACTUALLY vendored on disk: this run's set
+#    UNION any previously-locked entries still present. On a clean run the stale entries
+#    were already pruned above, so the union collapses to this run's set (identical to the
+#    old behavior); on a partial failure it keeps the blipped source's surviving skills
+#    tracked, so a later clean run reconciles them instead of orphaning them.
 to_json_array() { printf '%s\n' "$@" | jq -R . | jq -s 'map(select(. != "")) | unique'; }
-jq -n \
-  --argjson s "$(to_json_array "${VSKILLS[@]:-}")" \
-  --argjson a "$(to_json_array "${VAGENTS[@]:-}")" \
-  '{skills: $s, agents: $a}' > "$LOCK"
-date -u +"%Y-%m-%dT%H:%M:%SZ" > "$STAMP"
+if [ -z "$TOTAL_FAILURE" ]; then
+  LOCK_SKILLS=("${VSKILLS[@]:-}")
+  for d in "${OLD_SKILLS[@]:-}"; do
+    if [ -n "$d" ] && [ -d "$CANON_SKILLS/$d" ]; then LOCK_SKILLS+=("$d"); fi
+  done
+  LOCK_AGENTS=("${VAGENTS[@]:-}")
+  for f in "${OLD_AGENTS[@]:-}"; do
+    if [ -n "$f" ] && [ -f "$CANON_AGENTS/$f" ]; then LOCK_AGENTS+=("$f"); fi
+  done
+  jq -n \
+    --argjson s "$(to_json_array "${LOCK_SKILLS[@]:-}")" \
+    --argjson a "$(to_json_array "${LOCK_AGENTS[@]:-}")" \
+    '{skills: $s, agents: $a}' > "$LOCK"
+  date -u +"%Y-%m-%dT%H:%M:%SZ" > "$STAMP"
+fi
 
-# 5) Opt-in: also mirror the portable set into user-scope. Runs LAST so the lock it
-#    reads is fresh. Default runs (incl. the SessionStart hook, which passes no flags)
-#    skip this entirely — user-scope is only ever written on explicit --user-scope.
+# 5) Opt-in: also mirror the portable set into user-scope. Runs LAST so the lock it reads
+#    is fresh; on a total-failure run the lock wasn't rewritten, so it mirrors the committed
+#    last-good set (an explicit --user-scope install is never silently dropped just because
+#    the fetch was offline). Default runs (incl. the SessionStart hook, which passes no
+#    flags) skip this entirely — user-scope is only ever written on explicit --user-scope.
 [ -n "$USER_SCOPE" ] && mirror_user_scope
 
-echo "synced ${#VSKILLS[@]} skills, ${#VAGENTS[@]} agents (canonical: .agents/)"
+if [ -n "$TOTAL_FAILURE" ]; then
+  echo "sync: nothing vendored — kept last-good skills, lock, INDEX & stamp; refreshed pointers (self-heals next run)"
+else
+  echo "synced ${#VSKILLS[@]} skills, ${#VAGENTS[@]} agents (canonical: .agents/)"
+fi
