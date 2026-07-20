@@ -71,14 +71,16 @@ its terms set the sorting.
    - **Local:** catalog Sensitive notes in a gitignored **`_sensitive/_index.md`** — the local-plane
      counterpart to `index.md`.
 
-8. **Verify the boundary held.** Before finishing, prove nothing leaked. Scan the
-   **working-tree files directly** so brand-new, still-untracked notes are included:
-   `grep -rin -e "<party name>" -e "<owner>" . --exclude-dir=.git --exclude-dir=_sensitive --exclude-dir=_local`
-   must return nothing. **Don't** use a bare `git diff`/`git grep` here — both see only *tracked*
-   content, so a note you just wrote but haven't `git add`-ed yet slips through as "clean" (if you
-   prefer git's tooling, run the scan *after* `git add`, so `git diff --cached` / `git grep --cached`
-   sees new files too). Then confirm Sensitive notes are in the live vault's `_sensitive/` and
-   **absent** from the tracked tree.
+8. **Verify the boundary held.** Before finishing, prove nothing leaked. Scan tracked **and
+   still-untracked** notes — the just-written ones are what a bare `git diff`/`git grep` silently
+   skips (both see only *tracked* content, so a note you haven't `git add`-ed yet passes as "clean"):
+   `git grep -in --untracked -e "<party name>" -e "<owner>" -- . ':(exclude)_sensitive' ':(exclude)_local'`
+   must return nothing (use long-form `:(exclude)…` — the short `:!` form errors on the leading `_`).
+   `--untracked` honors `.gitignore`, so it also skips the extracted-text
+   scratch from step 3 (`.context/`) — where a plain `grep -r .` would false-positive on the very
+   names you're scanning for. (No git? Fall back to `grep -rin … .` and exclude the scratch dirs
+   yourself, or run the scan *after* `git add`.) Then confirm Sensitive notes are in the live vault's
+   `_sensitive/` and **absent** from the tracked tree.
 
 9. **Compound.** Extract reusable learnings to `docs/knowledge/` (`/kw-compound`).
 

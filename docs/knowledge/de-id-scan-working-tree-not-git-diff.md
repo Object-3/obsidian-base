@@ -30,11 +30,19 @@ skips exactly the files most likely to still carry a codename — the ones you j
 - **Observed for real:** `git diff -- . | grep -i <names>` said CLEAN while two
   just-authored notes still held a deal codename; a direct `grep` of the working files
   caught them.
-- **Fix — scan the working tree, or scan after staging:**
-  - Working tree directly (catches untracked):
-    `grep -rin -e "<name>" -e "<owner>" . --exclude-dir=.git --exclude-dir=_sensitive --exclude-dir=_local`
+- **Fix — scan tracked *and* untracked files, or scan after staging:**
+  - **Preferred — `git grep --untracked`:** scans tracked **and** untracked (non-ignored)
+    files, so brand-new notes are covered, while honoring `.gitignore` — so it skips
+    `_sensitive/` and scratch dirs (`.context/`, `.trash/`, gitignored `docs/plans/`) for free:
+    `git grep -in --untracked -e "<name>" -e "<owner>" -- . ':(exclude)_sensitive' ':(exclude)_local'`
+    (use the **long-form** `:(exclude)…` pathspec — the short `:!`/`:^` form errors on a path that
+    starts with `_`: `fatal: Unimplemented pathspec magic '_'`, verified on git 2.43)
   - **or** run the scan *after* `git add`, so `git diff --cached` / `git grep --cached`
-    (and `git grep --untracked`) can see the new files too.
+    sees the new files too.
+  - **Fallback (no git):** a plain working-tree `grep -rin -e "<name>" -e "<owner>" .` — but
+    *you* must exclude every gitignored scratch dir by hand
+    (`--exclude-dir=.git --exclude-dir=_sensitive --exclude-dir=_local --exclude-dir=.context …`),
+    or it false-positives on the confidential source text those dirs legitimately hold.
   - **Never** a bare `git diff`/`git grep` as the pre-commit de-id gate.
 
 ## Why the pre-commit guard doesn't cover this
@@ -58,20 +66,25 @@ that isn't tagged at all.
 ## Where this is enforced in the base
 
 - `AGENTS.md` → *Confidential & third-party material* now carries the rule
-  ("Scan before you commit — the working tree, not a bare `git diff`").
-- `/ingest-pdf` step 8 ("Verify the boundary held") uses the working-tree `grep -rin …`
-  form instead of the old `git grep -- .` that shared this blind spot.
+  ("Scan before you commit — include untracked files, not a bare `git diff`").
+- `/ingest-pdf` step 8 ("Verify the boundary held") uses `git grep --untracked` instead of
+  the old `git grep -- .` that shared this blind spot.
 - `/vault-dream` step 6's "nothing confidential in a tracked note" re-scan says the same.
 
 ## Caveats
 
-- **Exclude the sensitive planes and `.git`.** A plain recursive grep over the whole vault
-  would flag the confidential names where they *legitimately* live (`_sensitive/`,
-  `_local/`) and churn through `.git/` internals — hence the `--exclude-dir` list. The old
-  `git grep -- . ':!_sensitive' ':!_local'` got the exclusions right but the tracked-only
-  scope wrong.
-- **`git grep --untracked` is a valid third option** — it adds untracked (non-ignored)
-  files to git grep's scan and keeps the pathspec-exclusion syntax. Plain `grep -rin` is
-  preferred in the docs because it doesn't depend on git's staging state at all.
-- **`--exclude-dir` is supported by both GNU grep and macOS/BSD grep**, so the one-liner is
-  portable across the environments this vault runs in.
+- **Why `git grep --untracked` beats a plain `grep -r`.** `--untracked` catches the new,
+  still-unstaged notes (the whole point) *and* honors `.gitignore` — so it skips `_sensitive/`,
+  `_local/`, and scratch like `.context/` automatically. A plain `grep -r .` sees none of that:
+  it needs a hand-maintained `--exclude-dir` list that drifts out of sync with `.gitignore` and
+  will **false-positive** on the extracted confidential source text `/ingest-pdf` step 3 parks in
+  `.context/`. The old `git grep -- .` had two bugs at once: the *tracked-only* scope (the headline
+  gap) **and** a fragile short-form `:!_sensitive` pathspec — `--untracked` fixes the scope and the
+  long-form `:(exclude)…` fixes the pathspec.
+- **Use the long-form `:(exclude)…` pathspec, not the short `:!`/`:^`.** On git 2.43 a short-form
+  exclude whose path starts with `_` (`:!_sensitive`) dies with `fatal: Unimplemented pathspec magic
+  '_'` — git reads the `_` as a magic signature char. The long form `:(exclude)_sensitive` parses
+  cleanly and is supported further back, so it's the portable choice.
+- **`--exclude-dir` (for the no-git fallback) is supported by both GNU grep and macOS/BSD
+  grep**, so the fallback one-liner stays portable — just keep its exclude list current with
+  `.gitignore`.
