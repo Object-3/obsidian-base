@@ -68,6 +68,13 @@ existing note breaks). `confidence:` already exists and covers the epistemic-sta
   what raised it (Grounds) · why it matters (Warrant) · confidence + status**
   (`open` / `researching` / `answered → [[note]]`), with provenance to the note(s) that
   raised it.
+- **Each entry also carries a resolution route** — `resolve_via: web | ask-owner |
+  unknowable` (the abstention *query axis* from *Know Your Limits*, TACL 2025). This lets
+  the expansion loop route a gap to web retrieval, to a human, or to abstention from day
+  one — *before* either loop exists.
+- **`ask-owner` entries double as elicitation-queue items** (see B2): stable `id`,
+  `status: unasked | asked | answered | skipped`, and slots `asked_via` / `asked_at` /
+  `answered_at`. Idempotent (never re-ask an answered question) and auditable.
 - **Register it as a backbone file** everywhere the other three are special-cased:
   - `lint-vault.sh` `scan_mode()` (~93–96) → yaml-tier + reserved-name exemption.
   - `AGENTS.md` directory-map table (~94–113) → new row; reserved-backbone list (~82).
@@ -76,6 +83,37 @@ existing note breaks). `confidence:` already exists and covers the epistemic-sta
   - `init-vault.sh` → seed a placeholder `gaps.md` (as it seeds `index/log/hot`); add a
     seed `gaps.md` at this repo root. `gaps.md` is **per-vault content** (like `index.md`)
     — NOT added to `update-base` PATHS.
+
+### B2. Human elicitation channel — forward-compatible (queue now, comms later)
+
+Some gaps can never be answered by `WebSearch` — internal/proprietary/tacit knowledge that
+only lives in a person's head (the "needs-unavailable-context" bucket of the abstention
+query axis; the classic *active-learning* "query the oracle" + *tacit-knowledge
+elicitation* paradigms). The right resolution for these is **ask the owner**, not search.
+
+**The overnight/headless case forces the architecture.** vault-dream may run while the
+owner sleeps and they answer hours later out-of-session, so a synchronous prompt (e.g. a
+live `AskUserQuestion`) is impossible. The elicitation must therefore be **queue-as-durable
+-data + a thin, swappable delivery adapter**:
+
+- **Phase 1 (do now — the only expensive-to-retrofit part is the data shape):** the
+  `ask-owner` items in `gaps.md` (stable `id`, `status`, `asked_via`/`asked_at`/
+  `answered_at` — see B) *are* the queue. Delivery stays **passive**: questions live in
+  `gaps.md` and ride the existing SessionStart nudge. No comms wiring yet. Ask the *few*
+  highest-value questions (MAGELLAN learning-progress frame), never a wall of them.
+- **Deferred (phase 2/3 — pure adapters, designed as a seam):**
+  - A **pluggable notifier** step: read `status: unasked` `ask-owner` items → deliver via a
+    configured channel (email / Slack / Teams **MCP** adapter). vault-dream's core never
+    changes when a channel is added — adding one = "write one adapter + set one config
+    value." The transport primitives already exist at the harness level (Microsoft 365 /
+    Teams / Outlook MCP tools; the remote harness's `send_later` / routines / push).
+  - **Channel config in `vault-profile.md`** — a `comms:` stanza (preferred channel +
+    handle; **no secrets**, creds via the provider/MCP), managed by a future `/setup-comms`
+    skill exactly the way `/setup-sensitive-plane` manages its block. Lets a headless
+    overnight run know where to send.
+  - **Answer-ingestion-by-id:** a reply comes back → matched to the question `id` → ingested
+    as a note with provenance `source: owner-reply`, routed to `_sensitive/` when
+    confidential (natural tie-in to the existing confidentiality plane).
 
 ### C. Adversarial + time-aware stale-checking  ⚠️ CORRECTED
 
@@ -104,7 +142,8 @@ for our fog-of-war logic.
 
 - **Phase 4 — gap-surfacing sub-step:** harvest note `open_questions:` + detect
   thin/orphan/uncovered topics (LLM judgment over `index.md` + tag coverage) → maintain
-  `gaps.md` (add new gaps, mark answered). "Identify which questions the docs can't yet
+  `gaps.md`, **classifying each gap's `resolve_via`** (web / ask-owner / unknowable) and
+  populating the `ask-owner` elicitation queue (B2). "Identify which questions the docs can't yet
   answer."
 - **Phase 4 — supersession:** when a note is superseded, set `superseded_by:` +
   `status: archived` and close it out rather than delete (invalidate-not-delete).
@@ -159,7 +198,7 @@ fragility in the PR.
 - `.agents/skills/vault-dream/SKILL.md` — phase 4 (gap-surfacing, supersession, dual-agent
   confirm) + phase 5 (forgetting).
 - `.agents/agents/frontier-auditor.md` — **new** repo-local subagent (time/staleness +
-  gaps + independent skeptic).
+  gaps + independent skeptic + classify each gap's `resolve_via` route).
 - `.agents/skills/normalize-vault/SKILL.md` — optional-fields line (48); `gaps.md`
   refuse-list (90–104).
 - `.agents/scripts/update-base.sh` — agent propagation fix (61–83 / 105–128).
@@ -185,11 +224,23 @@ fragility in the PR.
    untouched (not in the lock) and the vendored checker is unmodified.
 6. **Pre-commit:** confidential-note guard still fires (unchanged).
 
-## Deferred — phase 2 (autonomous expansion loop)
+## Deferred — phase 2/3 (autonomous expansion loop + comms adapters)
 
-MetaKGEnrich/AgREE pattern: detect a sparse region (orphan/thin note, `open` gap in
-`gaps.md`) → generate targeted questions → **retrieve web evidence** → ingest as a new note
-with provenance → mark the gap `answered` → re-check. Optionally backed by a net-new
-deterministic `gap-scan.sh` (orphan/coverage over the wikilink graph) with its own cadence
-hook, mirroring the `dream-scan.sh` + `dream-if-stale.sh` watermark pattern. Deferred
-because it rests on the phase-1 representation and is the largest net-new surface.
+**Routing by `resolve_via` (the loop reads the phase-1 classification):**
+
+- **`web` → autonomous retrieval (MetaKGEnrich/AgREE pattern):** detect a sparse region
+  (orphan/thin note, `open` web-gap) → generate targeted questions → **retrieve web
+  evidence** → ingest as a new note with provenance → mark the gap `answered` → re-check.
+  Optionally backed by a net-new deterministic `gap-scan.sh` (orphan/coverage over the
+  wikilink graph) with its own cadence hook, mirroring the `dream-scan.sh` +
+  `dream-if-stale.sh` watermark pattern.
+- **`ask-owner` → human elicitation via a pluggable comms adapter (B2):** a notifier reads
+  `status: unasked` items → delivers the few highest-value questions via a configured
+  channel (email / Slack / Teams **MCP** adapter); replies are matched back by `id` and
+  ingested (`source: owner-reply`, sensitive-routed). Channel config in `vault-profile.md`
+  `comms:` (managed by a future `/setup-comms`, à la `/setup-sensitive-plane`). The seam is
+  designed in phase 1 so this is "add an adapter + set a config value," not a redesign.
+- **`unknowable` → abstain:** mark and stop; don't burn retrieval or the owner's attention.
+
+Deferred because it rests on the phase-1 representation and is the largest net-new surface;
+the comms adapters additionally wait on the vault's communication channels coming online.
