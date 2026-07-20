@@ -81,7 +81,9 @@ mirror_user_scope() {
   mkdir -p "$(dirname "$MIRROR_MANIFEST")" 2>/dev/null || true
   local mlock="$MIRROR_MANIFEST.lock"
   if ! mkdir "$mlock" 2>/dev/null; then
-    local mage; mage=$(( $(date +%s) - $(stat -f %m "$mlock" 2>/dev/null || stat -c %Y "$mlock" 2>/dev/null || echo 0) ))
+    local mmtime; mmtime=$(stat -c %Y "$mlock" 2>/dev/null || stat -f %m "$mlock" 2>/dev/null || echo 0)
+    case "$mmtime" in ''|*[!0-9]*) mmtime=0 ;; esac
+    local mage; mage=$(( $(date +%s) - mmtime ))
     if [ "$mage" -ge 300 ] && rm -rf "$mlock" 2>/dev/null && mkdir "$mlock" 2>/dev/null; then
       echo "   reclaimed stale mirror lock" >&2
     else
@@ -224,7 +226,8 @@ command -v curl >/dev/null || { echo "curl is required" >&2; exit 1; }
 # than 5 min is treated as stale (a crashed run) and reclaimed, so we never wedge
 # permanently.
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
-  lock_mtime=$(stat -f %m "$LOCKDIR" 2>/dev/null || stat -c %Y "$LOCKDIR" 2>/dev/null || echo 0)
+  lock_mtime=$(stat -c %Y "$LOCKDIR" 2>/dev/null || stat -f %m "$LOCKDIR" 2>/dev/null || echo 0)
+  case "$lock_mtime" in ''|*[!0-9]*) lock_mtime=0 ;; esac
   if [ "$(( $(date +%s) - lock_mtime ))" -ge 300 ] && rm -rf "$LOCKDIR" && mkdir "$LOCKDIR" 2>/dev/null; then
     echo "reclaimed stale sync lock"
   else
