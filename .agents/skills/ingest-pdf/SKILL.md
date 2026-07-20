@@ -71,9 +71,14 @@ its terms set the sorting.
    - **Local:** catalog Sensitive notes in a gitignored **`_sensitive/_index.md`** — the local-plane
      counterpart to `index.md`.
 
-8. **Verify the boundary held.** Before finishing, prove nothing leaked:
-   `git grep -i -e "<party name>" -e "<owner>" -- . ':!_sensitive' ':!_local'` must return nothing in tracked
-   files. Confirm Sensitive notes are in the live vault's `_sensitive/` and **absent** from the tracked tree.
+8. **Verify the boundary held.** Before finishing, prove nothing leaked. Scan the
+   **working-tree files directly** so brand-new, still-untracked notes are included:
+   `grep -rin -e "<party name>" -e "<owner>" . --exclude-dir=.git --exclude-dir=_sensitive --exclude-dir=_local`
+   must return nothing. **Don't** use a bare `git diff`/`git grep` here — both see only *tracked*
+   content, so a note you just wrote but haven't `git add`-ed yet slips through as "clean" (if you
+   prefer git's tooling, run the scan *after* `git add`, so `git diff --cached` / `git grep --cached`
+   sees new files too). Then confirm Sensitive notes are in the live vault's `_sensitive/` and
+   **absent** from the tracked tree.
 
 9. **Compound.** Extract reusable learnings to `docs/knowledge/` (`/kw-compound`).
 
