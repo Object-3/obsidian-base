@@ -244,3 +244,35 @@ fragility in the PR.
 
 Deferred because it rests on the phase-1 representation and is the largest net-new surface;
 the comms adapters additionally wait on the vault's communication channels coming online.
+
+## Architecture note — the notifier is a decoupled *service* (code, not markdown)
+
+Delivery/notification is deterministic plumbing (auth, retries, scheduling, idempotency,
+matching replies to a question `id`), so it belongs in **real code**, not LLM judgment. The
+division of labor: **vault-dream (LLM) decides *what* to ask and prioritizes; a notifier
+(code) delivers it and ingests the answer.** Decisions settled in this session:
+
+- **Source of truth = the vault markdown.** Open questions / gaps live in `gaps.md` (per
+  §B/B2), never a database — that keeps them git-versioned, Obsidian-native, and
+  human-editable, and they're low-volume human-scale data. The notifier MAY keep its own
+  **derived, disposable** state (e.g. a small SQLite/JSON cache of "already delivered" and
+  channel-message-id ↔ question-id); if lost, it rebuilds from the markdown. No coupling.
+- **The code lives in its own repo/package, NOT inside the vault.** The vault is content;
+  the notifier is an application (auto-committed vault ≠ home for a running service). **The
+  contract between them is the documented `gaps.md`/open-questions *file schema*, not a code
+  import** — Unix "programs + text streams" decoupling. Either side evolves independently as
+  long as the schema holds.
+- **One daemon, many vaults.** Because it's pointed at vault path(s) + creds + a schedule,
+  the same binary serves any obsidian-base-derived vault. This template **owns the schema**
+  (+ optionally a `/setup-comms` that installs/configures the daemon); the daemon repo owns
+  the code.
+- **Local vs cloud, same contract.** Local: a small background service the user installs
+  once and forgets (launchd/systemd/menubar). Cloud: the same binary as a service/cron — or
+  lean on the remote harness's existing scheduled routines + push, where a scheduled agent
+  turn reads `gaps.md` and calls the messaging tool.
+- **Zero per-channel adapters via a gateway.** Deliver *through* a unified messaging gateway
+  that already speaks email/Slack/Teams → the daemon writes ONE integration (to the gateway)
+  + the vault-reading logic. **TBD:** confirm the role of Hermes / OpenClaw (from prior
+  sessions) — working assumption is one of them IS that gateway; wire the daemon to it once
+  confirmed.
+
