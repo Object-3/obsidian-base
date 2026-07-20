@@ -4,7 +4,7 @@ type:    index
 status:  active
 tags:    [{{PRIMARY_TAG}}, log]
 created: 2026-06-27
-updated: 2026-06-29
+updated: 2026-07-20
 ---
 
 # Log
@@ -111,3 +111,17 @@ lint passes. Newest at the bottom. Prefix entries with `## [YYYY-MM-DD] <type> |
   half-configured (origin connected via a manual retry outside the script, but auto-sync
   still off).
 - New learning [[connect-github-naming-parity-and-push-resilience]].
+
+## [2026-07-20] fix | De-id scans read the working tree, not a bare `git diff`/`git grep`
+- The "de-identify before commit" check must catch **untracked** files. A bare
+  `git diff … | grep <names>` (or bare `git grep`) sees only *tracked* content, so a
+  brand-new note still carrying a confidential codename reports as CLEAN and gets
+  committed — observed for real (two just-authored notes slipped a deal codename past a
+  `git diff`-based scan; a direct working-tree `grep` caught them).
+- Fix: `AGENTS.md` *Confidential & third-party material* gains the rule ("include untracked
+  files, not a bare `git diff`"); `/ingest-pdf` step 8 and `/vault-dream` step 6 now scan with
+  `git grep --untracked` (catches new untracked notes AND honors `.gitignore`, so it skips
+  scratch like `.context/`), with a plain `grep -rin` fallback for non-git use. The
+  `classification:` pre-commit guard was already fine (it scans *staged* content) — the gap was
+  the interactive pre-stage scan.
+- New learning [[de-id-scan-working-tree-not-git-diff]].

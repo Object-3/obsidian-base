@@ -171,6 +171,20 @@ Two machine backstops so this doesn't depend on memory: **`**/*.private.md`** is
 gitignored everywhere, and the **pre-commit guard** blocks committing a `classification:
 confidential…` note outside `_sensitive/`. The **`/ingest-pdf`** skill runs this whole workflow.
 
+**Scan before you commit — include untracked files, not a bare `git diff`.** The interactive
+de-identification check you run *before* staging must cover **brand-new, still-untracked notes**,
+which a **bare `git diff` or bare `git grep` silently skips** (both look only at *tracked* content) —
+so a just-written note still carrying a confidential name reports as "clean" and slips into the
+commit. Use `git grep --untracked`: it scans tracked **and** untracked files while honoring
+`.gitignore` (so it skips `_sensitive/` and scratch like `.context/` for free) —
+`git grep -in --untracked -e "<name>" -e "<owner>" -- . ':(exclude)_sensitive' ':(exclude)_local'`
+(use the long-form `:(exclude)…`; the short `:!`/`:^` form chokes on the leading `_`). (Outside a git
+repo, fall back to a plain working-tree `grep -rin -e "<name>" -e "<owner>" .`, excluding any
+gitignored scratch yourself; or just run the scan *after* `git add`, so `git diff --cached` sees new
+files.) The pre-commit guard above is unaffected (it scans *staged* content once you've `git add`-ed) —
+but it only flags `classification:`-tagged notes, not a stray codename in an otherwise-shareable note,
+which is exactly what this pre-stage scan is for.
+
 ### Where the Sensitive plane lives (durability & multi-device)
 
 By default `_sensitive/` lives on **one machine**, unbacked — lose the disk, lose the
