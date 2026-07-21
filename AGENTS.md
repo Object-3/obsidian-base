@@ -361,6 +361,58 @@ Two kinds of change flow through this repo, and they use **different paths**:
 Rule of thumb: *if a non-technical note-taker would never touch it, it's an engine
 change → branch + PR.*
 
+**But first check whose engine it is.** The branch-+-PR path above is for the **base
+repo itself**. Nearly every vault built on this scaffolding is a **derived vault** — a
+private clone/instance that inherits the engine via `update-base` — and there the rule
+is different: engine problems go **upstream as GitHub issues**, never local fixes. See
+the next section; it overrides everything else in this file when it applies.
+
+### Engine bugs & improvements found in a derived vault → file an upstream issue. Never fix locally, never open a PR.
+
+**Who this applies to:** any agent working in a vault whose engine came from the
+obsidian-base template. Check `git remote get-url origin` — if it is **not** the base
+repo itself (default `Object-3/obsidian-base`; a fork/custom base is recorded in
+`.agents/.base-url`), you are in a **derived vault** and this section governs.
+
+**What counts as "engine":** anything base-owned — the paths `update-base` overlays:
+`AGENTS.md`, `CLAUDE.md`, `.agents/scripts/*` (`sync-skills.sh`, `update-base.sh`,
+`lint-vault.sh`, `init-vault.sh`, …), `.claude/hooks/*`, `.claude/settings.json`,
+`.agents/SKILLS.md`, `.agents/skill-sources.json`, vendored skills under
+`.agents/skills/`, `.gitignore`/`.gitattributes`. Also any **optimization,
+improvement, or enhancement that would benefit all clones of the base**, even if you
+noticed it while doing ordinary knowledge work.
+
+**The rule, in order:**
+
+1. **Do NOT patch the engine file in the derived vault.** A local fix is silently
+   **overwritten by the next `update-base` run**, forks the engine from upstream, and
+   fixes exactly one vault while every other clone keeps the bug.
+2. **Do NOT open a pull request against the base repo** — even if this session has
+   push or PR access to it. The base maintainers triage via issues; an unsolicited PR
+   from a derived-vault session is not the contribution path.
+3. **File a GitHub issue against the base repo, immediately** — via whatever GitHub
+   access the session has (GitHub MCP tools, `gh` CLI, or the API). Target the repo
+   from `.agents/.base-url` if present, otherwise `Object-3/obsidian-base`. Include:
+   - what you were doing when it surfaced (skill/script invoked, command run);
+   - the failing behavior — exact error output or wrong result;
+   - root cause if you diagnosed it (file + line);
+   - your proposed fix **as text or a diff inside the issue body** — the diagnosis
+     and patch are welcome, the delivery vehicle is the issue, not a PR;
+   - **de-identified**: no vault names, note titles, client/deal names, or private
+     paths — engine bugs are describable without any vault content.
+4. **No GitHub access at all in the session?** Write the same report to a local note
+   (e.g. `base-issue-<slug>.md`, `type: scratch`) and tell the user to file it against
+   the base repo — don't let the finding evaporate, and still don't fix the file.
+5. **Blocked right now?** If the bug prevents the user's *current* task, a minimal
+   local workaround is permitted **only after** the issue is filed (or the report note
+   from step 4 exists), and it must be clearly flagged to the user as **temporary —
+   will be overwritten by the next `update-base`** — ideally applied as an
+   un-committed working-tree change rather than committed to the vault.
+
+**In the base repo itself** (origin *is* the base repo, or a checkout explicitly made
+to contribute to it), none of this applies — develop fixes normally on a branch + PR
+as described above.
+
 ### Vault access (Obsidian MCP)
 
 The vault is a **user-owned, portable knowledge base** — reachable even from other
@@ -392,3 +444,7 @@ door for silent writes.
   goes in `title:`, not the filename.
 - This is a knowledge base, not a codebase: the deliverable is well-sourced,
   decisive, cross-linked Markdown.
+- Found a bug or a broadly-useful improvement in the **engine** (scripts, hooks,
+  skills, `AGENTS.md`) while working in a **derived vault**? **File a GitHub issue
+  against the base repo — don't fix it locally and don't open a PR.** See *Engine
+  bugs & improvements found in a derived vault* above.
