@@ -17,7 +17,8 @@
 #
 # What it refreshes (base-owned engine only):
 #   AGENTS.md, CLAUDE.md, .gitignore, .gitattributes, .agents/SKILLS.md,
-#   .agents/skill-sources.json, .agents/scripts/* (incl. dream-scan.sh + test-dream-smoke.sh),
+#   .agents/mcp-quick-orient.md, .agents/skill-sources.json,
+#   .agents/scripts/* (incl. dream-scan.sh + test-dream-smoke.sh),
 #   .claude/hooks/* (incl. dream-if-stale.sh), .claude/settings.json,
 #   .githooks/*, setup/*, SETUP.md, EVERY base-AUTHORED skill under .agents/skills/
 #   (auto-discovered from the fetched base tree — never a hand-kept list; see the
@@ -72,6 +73,7 @@ PATHS=(
   ".gitignore"
   ".gitattributes"
   ".agents/SKILLS.md"
+  ".agents/mcp-quick-orient.md"
   ".agents/skill-sources.json"
   ".agents/scripts"
   ".claude/hooks"

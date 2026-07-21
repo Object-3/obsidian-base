@@ -79,11 +79,20 @@ target_row() {
 
 detected_targets() {
   # Targets whose tool config directory exists on this machine.
+  # NOTE: the explicit `return 0` is load-bearing under `set -e`. Without it the
+  # function's exit status is that of its LAST loop iteration's `[[ -d … ]]` test,
+  # so if the final target (e.g. Codex) is absent the whole function returns 1 —
+  # which, via `d="$(detected_targets)"` in resolve_targets(), aborts before the
+  # echo and silently yields no targets even when an earlier one (Claude Code) WAS
+  # detected. The `if` (not `&&`) keeps each test from being the tail statement too.
   local row config_dir name
   for row in "${TARGET_TABLE[@]}"; do
     IFS='|' read -r name config_dir _ _ <<<"$row"
-    [[ -d "$config_dir" ]] && echo "$name"
+    if [[ -d "$config_dir" ]]; then
+      echo "$name"
+    fi
   done
+  return 0
 }
 
 resolve_targets() {
