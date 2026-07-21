@@ -61,6 +61,12 @@ header of the file it must open, the sentence it quoted in step 4. One change-se
 per round — docs *or* fixture, never both — or the verdict is unreadable. Rebuild
 the fixture (probes mutate it) and re-probe.
 
+**Machine backstops get two tests.** When a round adds enforcement (a hook, a
+guard, CI) rather than prose, test it twice: a **deterministic case matrix** run
+directly in the fixture (block / sanctioned-bypass / false-positive cases — cheap,
+exact, no agent) proves the *mechanism*; only the probe proves the *redirect* —
+that an agent hitting the block actually follows the instructions in its message.
+
 ## 6. Ladder down the models
 
 A pass on the strongest model proves the ceiling, not the rule. Re-run the
