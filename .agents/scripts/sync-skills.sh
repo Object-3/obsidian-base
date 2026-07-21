@@ -56,6 +56,44 @@ POINTERS=(
   ".claude/agents|../.agents/agents|$CANON_AGENTS"
 )
 
+# Age of a path in whole seconds (its mtime vs now). A missing/unreadable path or
+# any non-numeric stat output yields a very large age (treated as ancient), never a
+# `set -u` crash. stat: GNU `-c %Y` first (Linux/Git-Bash/WSL/busybox), then BSD
+# `-f %m` (macOS) — BSD exits non-zero on the unknown `-c`, so the fallback is
+# correct on every platform (the old `-f`-first order silently broke on GNU).
+_dir_age() {
+  local mtime
+  mtime=$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0)
+  case "$mtime" in ''|*[!0-9]*) mtime=0 ;; esac
+  echo "$(( $(date +%s) - mtime ))"
+}
+
+# Race-safe reclaim of a stale mkdir-based lock dir. $1 = lock dir, $2 = max age
+# (seconds). Returns 0 iff THIS process now holds a freshly-created lock at $1.
+#
+# A plain `rm -rf "$dir" && mkdir "$dir"` is NOT safe: two runs that both see the
+# lock as stale can both rm+mkdir and both believe they hold it. Instead we CLAIM
+# via an atomic rename(2) — at most one racer can win it, because the rename removes
+# the source. Two guards frame the claim so we neither disturb a live lock nor keep
+# a freshly-recreated one:
+#   1. Pre-check: if the lock looks fresh, return without touching it (don't disturb
+#      a live holder in the ordinary contention case).
+#   2. Post-claim re-check: if a fresh run recreated the dir between the pre-check
+#      and our rename, the dir we grabbed is a LIVE lock — put it back and lose.
+_reclaim_stale_lock() {
+  local dir="$1" max_age="$2" stale
+  [ "$(_dir_age "$dir")" -ge "$max_age" ] || return 1  # fresh -> a real run holds it
+  stale="$dir.stale.$$"
+  rm -rf "$stale" 2>/dev/null || true                  # clear any PID-reuse leftover
+  mv "$dir" "$stale" 2>/dev/null || return 1           # lost the atomic claim (gone / another racer won)
+  if [ "$(_dir_age "$stale")" -lt "$max_age" ]; then   # grabbed a live lock after all
+    mv "$stale" "$dir" 2>/dev/null || rm -rf "$stale" 2>/dev/null || true
+    return 1
+  fi
+  rm -rf "$stale" 2>/dev/null || true
+  mkdir "$dir" 2>/dev/null                               # 0 iff a fresh run didn't beat us here
+}
+
 command -v jq   >/dev/null || { echo "jq is required"   >&2; exit 1; }
 
 # Mirror the vendored PORTABLE set (the lock's .skills[]) into each CLI tool's
@@ -81,10 +119,7 @@ mirror_user_scope() {
   mkdir -p "$(dirname "$MIRROR_MANIFEST")" 2>/dev/null || true
   local mlock="$MIRROR_MANIFEST.lock"
   if ! mkdir "$mlock" 2>/dev/null; then
-    local mmtime; mmtime=$(stat -c %Y "$mlock" 2>/dev/null || stat -f %m "$mlock" 2>/dev/null || echo 0)
-    case "$mmtime" in ''|*[!0-9]*) mmtime=0 ;; esac
-    local mage; mage=$(( $(date +%s) - mmtime ))
-    if [ "$mage" -ge 300 ] && rm -rf "$mlock" 2>/dev/null && mkdir "$mlock" 2>/dev/null; then
+    if _reclaim_stale_lock "$mlock" 300; then
       echo "   reclaimed stale mirror lock" >&2
     else
       echo "   ! another user-scope mirror is in progress ($mlock); skipping" >&2; return 0
@@ -226,9 +261,7 @@ command -v curl >/dev/null || { echo "curl is required" >&2; exit 1; }
 # than 5 min is treated as stale (a crashed run) and reclaimed, so we never wedge
 # permanently.
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
-  lock_mtime=$(stat -c %Y "$LOCKDIR" 2>/dev/null || stat -f %m "$LOCKDIR" 2>/dev/null || echo 0)
-  case "$lock_mtime" in ''|*[!0-9]*) lock_mtime=0 ;; esac
-  if [ "$(( $(date +%s) - lock_mtime ))" -ge 300 ] && rm -rf "$LOCKDIR" && mkdir "$LOCKDIR" 2>/dev/null; then
+  if _reclaim_stale_lock "$LOCKDIR" 300; then
     echo "reclaimed stale sync lock"
   else
     echo "another sync-skills run is in progress ($LOCKDIR); exiting" >&2
