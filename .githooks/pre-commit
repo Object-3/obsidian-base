@@ -107,9 +107,11 @@ if [ -z "${BASE_UPDATE:-}" ]; then
       echo "     error + your proposed fix in the issue body. Do NOT open a PR." >&2
       echo "  2. Revert the local edit: git checkout -- <file>" >&2
       echo "See AGENTS.md → 'Engine bugs & improvements found in a derived vault'." >&2
-      echo "Committing an update-base overlay? That's the one sanctioned engine commit:" >&2
-      echo "  BASE_UPDATE=1 git commit …" >&2
-      echo "(Deliberate one-off override, rarely right: git commit --no-verify)" >&2
+      echo "Do NOT bypass this guard (--no-verify, BASE_UPDATE=1) to land an engine fix —" >&2
+      echo "a bug fix is never the sanctioned path, no matter how small or urgent. If the" >&2
+      echo "vault must work right now, leave the fix as an UNCOMMITTED working-tree change," >&2
+      echo "clearly flagged as temporary, and file the issue; update-base delivers the real fix." >&2
+      echo "(BASE_UPDATE=1 exists solely for committing an update-base overlay.)" >&2
       exit 1
     fi
   fi
