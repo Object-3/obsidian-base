@@ -1,5 +1,5 @@
 ---
-name: behavior-probe
+name: behavior-test
 description: Behaviorally test whether agent-facing instructions (AGENTS.md rules, skill text, script banners) actually change agent behavior — stage a fixture repo, plant a real defect, and grade an uncontaminated probe agent on what it does. Use when the user asks "will agents actually follow this", wants a doc/guardrail change tested or verified, or after materially editing the agent contract.
 ---
 
