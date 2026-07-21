@@ -8,6 +8,7 @@ source: running /setup-sensitive-plane with Microsoft 365 / OneDrive for a new t
 related:
   - "[[fresh-vault-uncommitted-personalization-and-branch-drift]]"
   - "[[ephemeral-fetch-remote-pattern]]"
+  - "[[cloud-mcp-deployment-architecture]]"
 ---
 
 # Setting up `_sensitive/` on OneDrive: four recurring gotchas

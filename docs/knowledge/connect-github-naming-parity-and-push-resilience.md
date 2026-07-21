@@ -5,6 +5,8 @@ tags: [connect-github, github, git, push, mcp, naming, gotcha]
 confidence: high
 created: 2026-07-02
 source: connecting a new topic vault to GitHub via connect-github.sh
+related:
+  - "[[cloud-mcp-deployment-architecture]]"
 ---
 
 # `connect-github.sh`: naming parity with the MCP label, and push resilience

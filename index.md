@@ -4,7 +4,7 @@ type:    index
 status:  active
 tags:    [{{PRIMARY_TAG}}, index]
 created: 2026-06-27
-updated: 2026-06-29
+updated: 2026-07-21
 ---
 
 # Index
@@ -17,7 +17,7 @@ whenever you add or materially change a note (see operating rules in `AGENTS.md`
 
 ## Notes
 
-_(No notes yet. Add your first one, then catalog it here.)_
+- [[cloud-mcp-deployment-architecture]] — `decision-record` · opt-in AWS cloud deployment of a vault as an authenticated read/write MCP endpoint: narrow markdown-only server composed with native M365/Drive MCPs, Fargate-first with a clean AgentCore migration path, three-tier data-control ladder (shareable → confidential → PHI) enforced by OAuth scopes, `_sensitive/` retained as the routing boundary.
 
 ## Plans
 

@@ -111,3 +111,22 @@ lint passes. Newest at the bottom. Prefix entries with `## [YYYY-MM-DD] <type> |
   half-configured (origin connected via a manual retry outside the script, but auto-sync
   still off).
 - New learning [[connect-github-naming-parity-and-push-resilience]].
+
+## [2026-07-21] feat | Cloud MCP deployment architecture decided (decision record)
+- New root note [[cloud-mcp-deployment-architecture]] capturing the design for an
+  opt-in cloud deployment module: any base-derived vault deployable to AWS as an
+  authenticated read/write MCP endpoint, with autonomous maintenance (dreaming) in
+  the cloud. Key decisions: narrow markdown-only MCP server composed with the native
+  M365/Drive MCPs (no cloud Obsidian, no Office parsing); two write modes with the
+  server as single tree owner (interactive → main, autonomous → branch + PR);
+  Fargate-first hosting behind a container contract for a clean later AgentCore
+  swap; OAuth 2.1 + PKCE via Cognito with a scope-enforced sensitivity boundary;
+  three-tier data-control ladder (shareable / confidential / PHI) keeping non-PHI
+  usage on existing Claude subscriptions incl. Routines; `_sensitive/` retained as
+  the enforced routing boundary; org-wide AWS BAA + Control Tower conformance pack
+  + Bedrock for the PHI tier. Firm IP control adopted as a governing principle
+  (consumer LLM tiers capped at the Shareable plane).
+- Provenance: multi-session architecture discussion on branch
+  claude/vaults-cloud-mcp-security-wcpn4v, with web research verified 2026-07-21.
+- Next: auth spike (Cognito + OAuth shim + hello-world MCP), then scaffold
+  /deploy-cloud-mcp + Pulumi.
