@@ -411,8 +411,9 @@ noticed it while doing ordinary knowledge work.
 5. **Blocked right now?** If the bug prevents the user's *current* task, a minimal
    local workaround is permitted **only after** the issue is filed (or the report note
    from step 4 exists), and it must be clearly flagged to the user as **temporary —
-   will be overwritten by the next `update-base`** — ideally applied as an
-   un-committed working-tree change rather than committed to the vault.
+   will be overwritten by the next `update-base`** — applied as an **un-committed
+   working-tree change, never committed** (the pre-commit engine guard enforces
+   this; don't bypass it).
 
 **Machine backstop.** The pre-commit **engine guard** (`.githooks/pre-commit`, guard 3)
 enforces this: in a derived vault it blocks any commit touching base-owned engine paths
