@@ -461,3 +461,35 @@ door for silent writes.
   skills, `AGENTS.md`) while working in a **derived vault**? **File a GitHub issue
   against the base repo — don't fix it locally and don't open a PR.** See *Engine
   bugs & improvements found in a derived vault* above.
+
+## Cursor Cloud specific instructions
+
+This repo has **no build step and no application server** — the "app" is a set of
+POSIX/Bash engine scripts under `.agents/scripts/` (plus `setup/`), and the notes are
+plain Markdown. Requirements (`bash`, `git`, `curl`, `jq`, `python3`) are baseline
+system tools; the update script only ensures the optional `PyYAML` used for
+full-fidelity lint. There is nothing to keep "running" in the background.
+
+- **Lint check:** `.agents/scripts/lint-vault.sh` (add `PRIMARY_TAG=<tag>` or paths to
+  scope). Exit 0 = clean, 1 = offenders. With `python3`+PyYAML it does a real YAML
+  parse; with neither PyYAML nor Ruby it prints a `note:` and falls back to a
+  narrower heuristic (still valid, just less thorough) — not an error.
+- **Tests:** the `.agents/scripts/test-*.sh` scripts are self-contained offline smoke
+  tests (`test-lint-vault.sh`, `test-mirror-smoke.sh`, `test-dream-smoke.sh`).
+- **Run/setup:** `.agents/scripts/init-vault.sh --yes` (non-interactive; env vars
+  `VAULT_NAME`/`VAULT_TAGLINE`/`VAULT_PURPOSE`/`PRIMARY_TAG`) is the `/setup-vault`
+  flow. It **mutates tracked files** (`index.md`, `log.md`, `README.md`, `llms.txt`,
+  `.agents/vault-profile.md`), seeds `hot.md`/`.agents/dream-state`, and **deletes
+  `base_seed: true` example notes** — so run it on a throwaway copy when only
+  verifying the environment, not on the repo you intend to commit.
+- **Uninitialized-template lint state (not a bug):** on a fresh checkout,
+  `lint-vault.sh` flags `index.md` and `log.md` as *invalid YAML* because their
+  frontmatter still holds the `{{PRIMARY_TAG}}` placeholder (`tags: [{{PRIMARY_TAG}}]`
+  isn't parseable). Running `init-vault.sh` resolves it and the vault lints clean.
+- **Known pre-existing failure — `test-dream-smoke.sh` fails on Linux.**
+  `.agents/scripts/dream-scan.sh` (`mtime_epoch`, ~line 137) tries BSD `stat -f %m`
+  before GNU `stat -c %Y`; on GNU/Linux `stat -f` means `--file-system` and leaks
+  multi-line filesystem info to stdout, so the numeric mtime comparison breaks
+  (`[: … integer expression expected`). This is a cross-platform bug in the code, **not
+  an environment problem** — the other two suites and the linter pass. It reproduces on
+  any GNU-coreutils box; it "passes" on macOS/BSD `stat`.
