@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# ── ENGINE FILE (base-owned) — AGENT NOTICE ─────────────────────────────────
+# In a DERIVED VAULT (git origin is not the obsidian-base repo): if this script
+# is buggy, do NOT fix it here and do NOT open a PR against the base repo —
+# FILE A GITHUB ISSUE against the upstream base (.agents/.base-url if present,
+# else Object-3/obsidian-base) with the error + proposed fix in the issue body.
+# Local patches are overwritten by the next update-base and help no other clone.
+# See AGENTS.md → "Engine bugs & improvements found in a derived vault".
+# ─────────────────────────────────────────────────────────────────────────────
 # SessionStart hook (Claude Code): refresh vendored skills if the local copy is
 # stale (>7 days) or if the tool pointers are missing/broken. Runs in the
 # background, never blocks or fails a session.

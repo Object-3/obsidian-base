@@ -353,10 +353,14 @@ Two kinds of change flow through this repo, and they use **different paths**:
   knowledge work. **Agent-initiated** content edits instead go on a **branch** (see
   *Vault access* below).
 - **Engine / structural** — the base layer: `AGENTS.md`, scripts, hooks,
-  `skill-sources.json`, schema-wide refactors, anything `update-base` owns. Make
-  these on a **branch and open a PR**, ideally from a **separate checkout/worktree**,
-  not the live auto-syncing vault — otherwise Obsidian Git can sweep a half-applied
-  engine change straight onto `main`.
+  `skill-sources.json`, schema-wide refactors, anything `update-base` owns.
+  **STOP — check `git remote get-url origin` before touching any engine file.**
+  If origin is **not** the base repo, this is a **derived vault**: engine files are
+  not yours to fix — no local patch, no branch, no PR. **File a GitHub issue against
+  the upstream base repo instead** (see the next section — it wins over everything
+  else here). Only in the base repo itself do engine changes go on a **branch + PR**,
+  ideally from a **separate checkout/worktree**, not the live auto-syncing vault —
+  otherwise Obsidian Git can sweep a half-applied engine change straight onto `main`.
 
 Rule of thumb: *if a non-technical note-taker would never touch it, it's an engine
 change → branch + PR.*
