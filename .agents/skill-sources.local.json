@@ -1,0 +1,11 @@
+{
+  "_comment": "THIS repo's OWN skill sources (per-vault). Never overwritten by /update-base and never pushed upstream — sync-skills.sh MERGES this with the base's skill-sources.json (local wins on a name collision). Add your vault-specific sources here.",
+  "sources": [
+    {
+      "name": "compound-engineering",
+      "repo": "EveryInc/compound-engineering-plugin",
+      "skillsPath": "skills",
+      "note": "Full Compound Engineering plugin (ce-* code skills + lfg), ALWAYS-ON for this repo. Committed here so every fresh checkout of THIS repo auto-vendors it via the SessionStart sync hook (the .agents/.skills-last-sync stamp is gitignored, so a fresh clone always re-syncs). It never reaches the public template — /update-base only pulls upstream->here, and it leaves this file untouched. ENGINEERING plane: for code repos, not knowledge notes — in the vault keep using the kw-* skills; run /install-skills to mirror ce-* into your code projects. No include list, so every sync adopts the COMPLETE current upstream set (new/renamed skills are picked up, removed ones pruned) — nothing upstream is ever missed. If a sync ever warns this source 'yielded no skills', upstream moved the folder: update skillsPath (e.g. to plugins/compound-engineering/skills)."
+    }
+  ]
+}
