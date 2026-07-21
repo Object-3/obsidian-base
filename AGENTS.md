@@ -414,6 +414,13 @@ noticed it while doing ordinary knowledge work.
    will be overwritten by the next `update-base`** — ideally applied as an
    un-committed working-tree change rather than committed to the vault.
 
+**Machine backstop.** The pre-commit **engine guard** (`.githooks/pre-commit`, guard 3)
+enforces this: in a derived vault it blocks any commit touching base-owned engine paths
+and prints these instructions. The one sanctioned engine commit — an `update-base`
+overlay — passes with `BASE_UPDATE=1 git commit …`. (Like the other guards, Obsidian
+Git's bundled git may skip native hooks, so the guard is a backstop, not a substitute
+for this rule.)
+
 **In the base repo itself** (origin *is* the base repo, or a checkout explicitly made
 to contribute to it), none of this applies — develop fixes normally on a branch + PR
 as described above.

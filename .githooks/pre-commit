@@ -4,6 +4,9 @@
 #   2. Confidential guard — block notes marked `classification: confidential` (or
 #      `availability: local-only`) outside `_sensitive/`, so sensitive / third-party
 #      material never reaches a synced git host.
+#   3. Engine guard — in a DERIVED vault (origin is not the base repo), block commits
+#      that edit base-owned engine files: those fixes belong upstream as GitHub issues
+#      (see AGENTS.md), and a local patch is overwritten by the next update-base.
 # Large/sensitive originals (PDFs, images, datasets) belong in the gitignored `_sensitive/`
 # folder or external storage (e.g. Google Drive) with a small reference note — NOT the repo.
 #
@@ -55,4 +58,59 @@ if [ -n "$conf" ]; then
   echo "in the gitignored _sensitive/ folder (or be named *.private.md), never in tracked git." >&2
   echo "Move them, or override for one commit (rarely needed): git commit --no-verify" >&2
   exit 1
+fi
+
+# 3. Engine guard: base-owned engine files are not a derived vault's to change — the
+# fix belongs UPSTREAM as a GitHub issue (AGENTS.md → "Engine bugs & improvements
+# found in a derived vault"). Sanctioned paths through: the base repo itself (origin
+# matches the base identity), an update-base overlay commit (BASE_UPDATE=1), or a
+# deliberate one-off override (git commit --no-verify). A vault with no origin remote
+# yet is left alone. Vendored skills (.agents/skills/) are excluded: sync-skills
+# legitimately rewrites them in derived vaults.
+if [ -z "${BASE_UPDATE:-}" ]; then
+  # Compare remotes by their trailing owner/repo path, not the full URL — hosts get
+  # rewritten by proxies, insteadOf rules, and SSH aliases, but the repo slug survives.
+  repo_slug() {
+    printf '%s' "$1" | tr '[:upper:]' '[:lower:]' \
+      | sed -e 's#^git@\([^:]*\):#\1/#' -e 's#\.git$##' -e 's#/*$##' \
+      | awk -F/ 'NF>=2 {print $(NF-1)"/"$NF}'
+  }
+  origin="$(git remote get-url origin 2>/dev/null || true)"
+  base_display="Object-3/obsidian-base"
+  base_slug="object-3/obsidian-base"
+  custom_base=""
+  [ -s .agents/.base-url ] && custom_base="$(tr -d '[:space:]' < .agents/.base-url)" || true
+  [ -n "$custom_base" ] && base_display="$custom_base"
+  is_base=""
+  if [ -z "$origin" ]; then
+    is_base=1
+  else
+    o="$(repo_slug "$origin")"
+    [ "$o" = "$base_slug" ] && is_base=1
+    [ -n "$custom_base" ] && [ "$o" = "$(repo_slug "$custom_base")" ] && is_base=1
+  fi
+  if [ -z "$is_base" ]; then
+    eng=""
+    while IFS= read -r -d '' file; do
+      case "$file" in
+        AGENTS.md|CLAUDE.md|.agents/SKILLS.md|.agents/skill-sources.json|.agents/scripts/*|.claude/hooks/*|.claude/settings.json|.githooks/*)
+          eng+="  $file"$'\n' ;;
+      esac
+    done < <(git diff --cached --name-only -z)
+    if [ -n "$eng" ]; then
+      echo "✋ commit blocked — base-owned ENGINE file(s) edited in a DERIVED vault:" >&2
+      printf '%s' "$eng" >&2
+      echo "" >&2
+      echo "This vault inherits its engine from the obsidian-base template. A local patch is" >&2
+      echo "overwritten by the next update-base run and fixes only this one clone. Instead:" >&2
+      echo "  1. FILE A GITHUB ISSUE against the base repo ($base_display) with the" >&2
+      echo "     error + your proposed fix in the issue body. Do NOT open a PR." >&2
+      echo "  2. Revert the local edit: git checkout -- <file>" >&2
+      echo "See AGENTS.md → 'Engine bugs & improvements found in a derived vault'." >&2
+      echo "Committing an update-base overlay? That's the one sanctioned engine commit:" >&2
+      echo "  BASE_UPDATE=1 git commit …" >&2
+      echo "(Deliberate one-off override, rarely right: git commit --no-verify)" >&2
+      exit 1
+    fi
+  fi
 fi

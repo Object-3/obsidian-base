@@ -176,6 +176,9 @@ else
   if git remote get-url origin >/dev/null 2>&1; then
     echo "  2. This is an ENGINE change — commit on a branch and open a PR (don't let the"
     echo "     live auto-syncing vault sweep a half-applied engine update onto main)."
+    echo "     Commit with BASE_UPDATE=1 (e.g. 'BASE_UPDATE=1 git commit …') — the pre-commit"
+    echo "     engine guard blocks other engine edits in a derived vault, and this marks the"
+    echo "     one sanctioned kind."
   else
     echo "  2. No 'origin' remote yet — there's nothing to open a PR against."
     echo "     Commit directly: git add -A && git commit -m 'Update base layer from obsidian-base'."
