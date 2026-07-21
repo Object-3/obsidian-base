@@ -66,7 +66,9 @@ fi
 # matches the base identity), an update-base overlay commit (BASE_UPDATE=1), or a
 # deliberate one-off override (git commit --no-verify). A vault with no origin remote
 # yet is left alone. Vendored skills (.agents/skills/) are excluded: sync-skills
-# legitimately rewrites them in derived vaults.
+# legitimately rewrites them in derived vaults. .gitignore/.gitattributes are also
+# excluded — vaults legitimately append local ignores (update-base will overwrite
+# those edits; that trade-off is deliberate, guarding them would block too much).
 if [ -z "${BASE_UPDATE:-}" ]; then
   # Compare remotes by their trailing owner/repo path, not the full URL — hosts get
   # rewritten by proxies, insteadOf rules, and SSH aliases, but the repo slug survives.
@@ -93,7 +95,7 @@ if [ -z "${BASE_UPDATE:-}" ]; then
     eng=""
     while IFS= read -r -d '' file; do
       case "$file" in
-        AGENTS.md|CLAUDE.md|.agents/SKILLS.md|.agents/skill-sources.json|.agents/scripts/*|.claude/hooks/*|.claude/settings.json|.githooks/*)
+        AGENTS.md|CLAUDE.md|.agents/SKILLS.md|.agents/skill-sources.json|.agents/scripts/*|.claude/hooks/*|.claude/settings.json|.githooks/*|setup/*|SETUP.md|.obsidian/snippets/hide-engine-files.css)
           eng+="  $file"$'\n' ;;
       esac
     done < <(git diff --cached --name-only -z)
