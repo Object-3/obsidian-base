@@ -363,7 +363,8 @@ Two kinds of change flow through this repo, and they use **different paths**:
   otherwise Obsidian Git can sweep a half-applied engine change straight onto `main`.
 
 Rule of thumb: *if a non-technical note-taker would never touch it, it's an engine
-change → branch + PR.*
+change — and engine changes are **upstream issues** in a derived vault, **branch + PR**
+only in the base repo itself.*
 
 **But first check whose engine it is.** The branch-+-PR path above is for the **base
 repo itself**. Nearly every vault built on this scaffolding is a **derived vault** — a
