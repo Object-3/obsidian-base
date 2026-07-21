@@ -39,12 +39,20 @@ separate checkout, not the live auto-syncing vault). See "content vs engine" in 
    (it detects the manifest), the global copies don't auto-refresh. **Offer** to run
    `/install-skills` (or `sync-skills.sh --mirror-only`) — consent-gated; don't auto-run.
 
-3. **Review, commit on a branch, open a PR.** `git diff --staged` to review.
+3. **Review, commit on a branch, open a PR.** `git diff --staged` to review. Commit
+   with `BASE_UPDATE=1 git commit …` — the pre-commit engine guard blocks other
+   engine edits in a derived vault, and this marks the one sanctioned kind.
 
 4. Append a one-line entry to `log.md` noting the base update.
 
 ## Notes
 
+- **If the updater (or anything else in the engine) misbehaves in this vault, do NOT
+  fix the script here and do NOT open a PR against the base repo** — a local patch is
+  overwritten by the next base update and helps no other clone. **File a GitHub issue
+  against the upstream base repo** (the URL in `.agents/.base-url`, else
+  `Object-3/obsidian-base`) with the error output and your proposed fix in the issue
+  body. See *Engine bugs & improvements found in a derived vault* in `AGENTS.md`.
 - This is a hand-authored, repo-local skill — not vendored — so `sync-skills.sh`
   won't overwrite it.
 - For non-technical users: an agent running this on their behalf is all they need to

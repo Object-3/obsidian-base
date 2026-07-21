@@ -81,6 +81,11 @@ use). If everything is `✓ ok`, say so in one line and stop — don't invent wo
 ## Notes
 
 - **Consent-gated:** report → offer → fix. Never apply a repair the user didn't accept.
+- **Repairs fix wiring/state, never engine code.** If a check reveals the bug is in a
+  base-owned script/hook/skill itself, don't edit it here and don't open a PR upstream —
+  **file a GitHub issue** against the base repo (`.agents/.base-url` if set, else
+  `Object-3/obsidian-base`) per *Engine bugs & improvements found in a derived vault*
+  in `AGENTS.md`.
 - **Extensible:** new checks slot in as additional numbered sections that wrap a script
   and report `ok/drift/broken` — keep the doctor a conductor, not a monolith.
 - **After /update-base:** only nudge toward running the doctor when the sync actually

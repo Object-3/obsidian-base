@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# ── ENGINE FILE (base-owned) — AGENT NOTICE ─────────────────────────────────
+# In a DERIVED VAULT (git origin is not the obsidian-base repo): if this script
+# is buggy, do NOT fix it here and do NOT open a PR against the base repo —
+# FILE A GITHUB ISSUE against the upstream base (.agents/.base-url if present,
+# else Object-3/obsidian-base) with the error + proposed fix in the issue body.
+# Local patches are overwritten by the next update-base and help no other clone.
+# See AGENTS.md → "Engine bugs & improvements found in a derived vault".
+# ─────────────────────────────────────────────────────────────────────────────
 # Pull the latest BASE LAYER (engine) from the upstream base repo into THIS vault,
 # WITHOUT touching your notes, vault-profile, or content.
 #
@@ -168,6 +176,9 @@ else
   if git remote get-url origin >/dev/null 2>&1; then
     echo "  2. This is an ENGINE change — commit on a branch and open a PR (don't let the"
     echo "     live auto-syncing vault sweep a half-applied engine update onto main)."
+    echo "     Commit with BASE_UPDATE=1 (e.g. 'BASE_UPDATE=1 git commit …') — the pre-commit"
+    echo "     engine guard blocks other engine edits in a derived vault, and this marks the"
+    echo "     one sanctioned kind."
   else
     echo "  2. No 'origin' remote yet — there's nothing to open a PR against."
     echo "     Commit directly: git add -A && git commit -m 'Update base layer from obsidian-base'."
