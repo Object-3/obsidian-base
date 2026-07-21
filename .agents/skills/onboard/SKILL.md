@@ -85,6 +85,14 @@ Then confirm the agent can list files in the vault via the Obsidian MCP.
   the gitignored `_sensitive/` folder with an org-tenant cloud-synced folder — durable and
   multi-device, but never in git. It **ends by telling them, in plain language, that they
   have a private folder and how to use it.** Skip for purely personal, single-machine use.
+- **Also write software here?** (optional — engineering only): this vault is for *notes
+  and knowledge*. If the user *also* uses this setup to **build software** — write and ship
+  code — they can add the **Compound Engineering** coding skills (planning, code review,
+  debugging, pull-request/commit workflows, tests) via the **`add-engineering-skills`**
+  skill. Say it plainly: *these help write code, not notes* — so skip it for a pure
+  knowledge vault. They install alongside the notes and change nothing about how the vault
+  works, and `/install-skills` can mirror them into the user's actual code projects, where
+  they belong. Don't offer this unprompted to a clearly non-technical note-taker.
 - **Proactive recall from any project** (recommended): with the MCP at `--scope user`,
   the vault is reachable from every Claude Code session — but the agent won't *consult*
   it on its own unless told to. Offer to add a short standing rule to their global

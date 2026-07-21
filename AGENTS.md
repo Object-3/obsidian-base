@@ -334,6 +334,12 @@ keep them apart so nothing collides and every agent knows where to look:
   schema-incompatible store that pollutes the Obsidian graph. (`lint-vault.sh` will
   confirm those files parse as valid YAML, but it deliberately doesn't hold `docs/` to
   the vault note schema, so it won't flag them as intruders — the graph is the tell.)
+  **Adding the CE skills is opt-in and engineering-only:** the base ships the *capability*,
+  not the skills, so a plain knowledge vault stays free of them. Run
+  **`/add-engineering-skills`** to vendor the full Compound Engineering plugin as a *local*
+  source (this vault only — never base-owned/fleet-wide, kept current automatically since
+  there's no include-list to freeze the set), then `/install-skills` to mirror them into
+  the code repos where they actually run.
 - **One copy, EveryInc's name.** The `kw-*` skills are vendored verbatim from EveryInc's
   `compound-knowledge` plugin. Their registered `name:` is `kw:compound` (the colon is
   EveryInc's; the folder is `kw-compound`) — invoke the **upstream name, `/kw:compound`**, and
