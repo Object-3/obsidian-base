@@ -29,7 +29,12 @@ URL, own vault profile, own git history — built from the current working tree 
 carries your latest guardrails). Then **plant** the trigger — and prefer a **real
 defect over an injected one**: an injected bug that exists only in the fixture is a
 confound (a capable agent diffs against upstream, reads it as local corruption, and
-"correctly" does the thing you're testing against).
+"correctly" does the thing you're testing against). The cleanest real defect is one
+the repo actually shipped: restore a prior buggy version straight from history
+(`git show <old-ref>:<path> > fixture/<path>`) instead of hand-breaking the file.
+Mind what the fixture carries — a snapshot of *committed* state (`git archive HEAD`)
+omits the very fix and tests you're validating while they sit uncommitted, so commit
+them first or copy them in, or the probe silently tests the old code.
 
 Done when: the failure reproduces verbatim in the fixture, and the defect's
 location matches where the rule says such defects live.
