@@ -155,7 +155,10 @@ Audit the proposed changeset and fix or annotate any failure before opening the 
 - **No human-authored prose deleted or rewritten** — such changes must be `[!contradiction]`
   callouts instead.
 - **Nothing confidential in a tracked note** — re-scan for secrets/credentials/third-party
-  detail.
+  detail with `git grep --untracked` (or scan *after* `git add`) so **brand-new, untracked**
+  notes are included — a bare `git diff`/`git grep` sees only *tracked* files and silently skips
+  a just-written note, so it would pass as "clean". `--untracked` honors `.gitignore`, so it
+  won't false-positive on scratch like `.context/`.
 - **`.agents/scripts/lint-vault.sh` is clean** on every newly written/edited note.
 
 If a check fails, fix it (repair the link, convert the deletion to a callout, de-identify)

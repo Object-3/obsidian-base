@@ -9,6 +9,7 @@ related:
   - "[[fresh-vault-uncommitted-personalization-and-branch-drift]]"
   - "[[ephemeral-fetch-remote-pattern]]"
   - "[[cloud-mcp-deployment-architecture]]"
+  - "[[de-id-scan-working-tree-not-git-diff]]"
 ---
 
 # Setting up `_sensitive/` on OneDrive: four recurring gotchas

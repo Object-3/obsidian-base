@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# ── ENGINE FILE (base-owned) — AGENT NOTICE ─────────────────────────────────
+# In a DERIVED VAULT (git origin is not the obsidian-base repo): if this script
+# is buggy, do NOT fix it here and do NOT open a PR against the base repo —
+# FILE A GITHUB ISSUE against the upstream base (.agents/.base-url if present,
+# else Object-3/obsidian-base) with the error + proposed fix in the issue body.
+# Local patches are overwritten by the next update-base and help no other clone.
+# See AGENTS.md → "Engine bugs & improvements found in a derived vault".
+# ─────────────────────────────────────────────────────────────────────────────
 # dream-scan.sh — scope-aware discovery of agent session transcripts recorded SINCE the
 # dream watermark. Feeds two callers: the SessionStart nudge (.claude/hooks/dream-if-stale.sh,
 # which uses --count to gate) and the /vault-dream skill (which reads the paths to consolidate).
@@ -125,8 +133,18 @@ iso_to_epoch() {
   echo 0
 }
 
-# File mtime -> epoch seconds, portable across BSD (stat -f %m) and GNU (stat -c %Y).
-mtime_epoch() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0; }
+# File mtime -> epoch seconds. GNU `stat -c %Y` first (Linux/Git-Bash/WSL/busybox),
+# then BSD `stat -f %m` (macOS). The order matters: on GNU, `-f` means --file-system,
+# so `stat -f %m <file>` *succeeds* for the file operand and prints a multi-line
+# filesystem block to stdout — poisoning the numeric comparison even though the GNU
+# fallback also runs. BSD exits non-zero on the unknown `-c`, printing nothing, so
+# GNU-first is clean on both platforms. The case guard drops any non-numeric output.
+mtime_epoch() {
+  local m
+  m=$(stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0)
+  case "$m" in ''|*[!0-9]*) m=0 ;; esac
+  echo "$m"
+}
 
 # A filesystem path -> the Claude Code project-dir slug (every non-alphanumeric -> '-'),
 # matching how Claude Code names ~/.claude/projects/<slug>.

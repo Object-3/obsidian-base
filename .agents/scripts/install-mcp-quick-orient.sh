@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
+# ── ENGINE FILE (base-owned) — AGENT NOTICE ─────────────────────────────────
+# In a DERIVED VAULT (git origin is not the obsidian-base repo): if this script
+# is buggy, do NOT fix it here and do NOT open a PR against the base repo —
+# FILE A GITHUB ISSUE against the upstream base (.agents/.base-url if present,
+# else Object-3/obsidian-base) with the error + proposed fix in the issue body.
+# Local patches are overwritten by the next update-base and help no other clone.
+# See AGENTS.md → "Engine bugs & improvements found in a derived vault".
+# ─────────────────────────────────────────────────────────────────────────────
 # ===========================================================================
 # install-mcp-quick-orient.sh — install the fast Obsidian MCP orientation
 # instruction into a user's GLOBAL agent config, for every tool present
@@ -71,11 +79,20 @@ target_row() {
 
 detected_targets() {
   # Targets whose tool config directory exists on this machine.
+  # NOTE: the explicit `return 0` is load-bearing under `set -e`. Without it the
+  # function's exit status is that of its LAST loop iteration's `[[ -d … ]]` test,
+  # so if the final target (e.g. Codex) is absent the whole function returns 1 —
+  # which, via `d="$(detected_targets)"` in resolve_targets(), aborts before the
+  # echo and silently yields no targets even when an earlier one (Claude Code) WAS
+  # detected. The `if` (not `&&`) keeps each test from being the tail statement too.
   local row config_dir name
   for row in "${TARGET_TABLE[@]}"; do
     IFS='|' read -r name config_dir _ _ <<<"$row"
-    [[ -d "$config_dir" ]] && echo "$name"
+    if [[ -d "$config_dir" ]]; then
+      echo "$name"
+    fi
   done
+  return 0
 }
 
 resolve_targets() {

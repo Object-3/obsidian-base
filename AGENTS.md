@@ -171,6 +171,20 @@ Two machine backstops so this doesn't depend on memory: **`**/*.private.md`** is
 gitignored everywhere, and the **pre-commit guard** blocks committing a `classification:
 confidential…` note outside `_sensitive/`. The **`/ingest-pdf`** skill runs this whole workflow.
 
+**Scan before you commit — include untracked files, not a bare `git diff`.** The interactive
+de-identification check you run *before* staging must cover **brand-new, still-untracked notes**,
+which a **bare `git diff` or bare `git grep` silently skips** (both look only at *tracked* content) —
+so a just-written note still carrying a confidential name reports as "clean" and slips into the
+commit. Use `git grep --untracked`: it scans tracked **and** untracked files while honoring
+`.gitignore` (so it skips `_sensitive/` and scratch like `.context/` for free) —
+`git grep -in --untracked -e "<name>" -e "<owner>" -- . ':(exclude)_sensitive' ':(exclude)_local'`
+(use the long-form `:(exclude)…`; the short `:!`/`:^` form chokes on the leading `_`). (Outside a git
+repo, fall back to a plain working-tree `grep -rin -e "<name>" -e "<owner>" .`, excluding any
+gitignored scratch yourself; or just run the scan *after* `git add`, so `git diff --cached` sees new
+files.) The pre-commit guard above is unaffected (it scans *staged* content once you've `git add`-ed) —
+but it only flags `classification:`-tagged notes, not a stray codename in an otherwise-shareable note,
+which is exactly what this pre-stage scan is for.
+
 ### Where the Sensitive plane lives (durability & multi-device)
 
 By default `_sensitive/` lives on **one machine**, unbacked — lose the disk, lose the
@@ -339,13 +353,78 @@ Two kinds of change flow through this repo, and they use **different paths**:
   knowledge work. **Agent-initiated** content edits instead go on a **branch** (see
   *Vault access* below).
 - **Engine / structural** — the base layer: `AGENTS.md`, scripts, hooks,
-  `skill-sources.json`, schema-wide refactors, anything `update-base` owns. Make
-  these on a **branch and open a PR**, ideally from a **separate checkout/worktree**,
-  not the live auto-syncing vault — otherwise Obsidian Git can sweep a half-applied
-  engine change straight onto `main`.
+  `skill-sources.json`, schema-wide refactors, anything `update-base` owns.
+  **STOP — check `git remote get-url origin` before touching any engine file.**
+  If origin is **not** the base repo, this is a **derived vault**: engine files are
+  not yours to fix — no local patch, no branch, no PR. **File a GitHub issue against
+  the upstream base repo instead** (see the next section — it wins over everything
+  else here). Only in the base repo itself do engine changes go on a **branch + PR**,
+  ideally from a **separate checkout/worktree**, not the live auto-syncing vault —
+  otherwise Obsidian Git can sweep a half-applied engine change straight onto `main`.
 
 Rule of thumb: *if a non-technical note-taker would never touch it, it's an engine
-change → branch + PR.*
+change — and engine changes are **upstream issues** in a derived vault, **branch + PR**
+only in the base repo itself.*
+
+**But first check whose engine it is.** The branch-+-PR path above is for the **base
+repo itself**. Nearly every vault built on this scaffolding is a **derived vault** — a
+private clone/instance that inherits the engine via `update-base` — and there the rule
+is different: engine problems go **upstream as GitHub issues**, never local fixes. See
+the next section; it overrides everything else in this file when it applies.
+
+### Engine bugs & improvements found in a derived vault → file an upstream issue. Never fix locally, never open a PR.
+
+**Who this applies to:** any agent working in a vault whose engine came from the
+obsidian-base template. Check `git remote get-url origin` — if it is **not** the base
+repo itself (default `Object-3/obsidian-base`; a fork/custom base is recorded in
+`.agents/.base-url`), you are in a **derived vault** and this section governs.
+
+**What counts as "engine":** anything base-owned — the paths `update-base` overlays:
+`AGENTS.md`, `CLAUDE.md`, `.agents/scripts/*` (`sync-skills.sh`, `update-base.sh`,
+`lint-vault.sh`, `init-vault.sh`, …), `.claude/hooks/*`, `.claude/settings.json`,
+`.agents/SKILLS.md`, `.agents/skill-sources.json`, vendored skills under
+`.agents/skills/`, `.gitignore`/`.gitattributes`. Also any **optimization,
+improvement, or enhancement that would benefit all clones of the base**, even if you
+noticed it while doing ordinary knowledge work.
+
+**The rule, in order:**
+
+1. **Do NOT patch the engine file in the derived vault.** A local fix is silently
+   **overwritten by the next `update-base` run**, forks the engine from upstream, and
+   fixes exactly one vault while every other clone keeps the bug.
+2. **Do NOT open a pull request against the base repo** — even if this session has
+   push or PR access to it. The base maintainers triage via issues; an unsolicited PR
+   from a derived-vault session is not the contribution path.
+3. **File a GitHub issue against the base repo, immediately** — via whatever GitHub
+   access the session has (GitHub MCP tools, `gh` CLI, or the API). Target the repo
+   from `.agents/.base-url` if present, otherwise `Object-3/obsidian-base`. Include:
+   - what you were doing when it surfaced (skill/script invoked, command run);
+   - the failing behavior — exact error output or wrong result;
+   - root cause if you diagnosed it (file + line);
+   - your proposed fix **as text or a diff inside the issue body** — the diagnosis
+     and patch are welcome, the delivery vehicle is the issue, not a PR;
+   - **de-identified**: no vault names, note titles, client/deal names, or private
+     paths — engine bugs are describable without any vault content.
+4. **No GitHub access at all in the session?** Write the same report to a local note
+   (e.g. `base-issue-<slug>.md`, `type: scratch`) and tell the user to file it against
+   the base repo — don't let the finding evaporate, and still don't fix the file.
+5. **Blocked right now?** If the bug prevents the user's *current* task, a minimal
+   local workaround is permitted **only after** the issue is filed (or the report note
+   from step 4 exists), and it must be clearly flagged to the user as **temporary —
+   will be overwritten by the next `update-base`** — applied as an **un-committed
+   working-tree change, never committed** (the pre-commit engine guard enforces
+   this; don't bypass it).
+
+**Machine backstop.** The pre-commit **engine guard** (`.githooks/pre-commit`, guard 3)
+enforces this: in a derived vault it blocks any commit touching base-owned engine paths
+and prints these instructions. The one sanctioned engine commit — an `update-base`
+overlay — passes with `BASE_UPDATE=1 git commit …`. (Like the other guards, Obsidian
+Git's bundled git may skip native hooks, so the guard is a backstop, not a substitute
+for this rule.)
+
+**In the base repo itself** (origin *is* the base repo, or a checkout explicitly made
+to contribute to it), none of this applies — develop fixes normally on a branch + PR
+as described above.
 
 ### Vault access (Obsidian MCP)
 
@@ -378,3 +457,39 @@ door for silent writes.
   goes in `title:`, not the filename.
 - This is a knowledge base, not a codebase: the deliverable is well-sourced,
   decisive, cross-linked Markdown.
+- Found a bug or a broadly-useful improvement in the **engine** (scripts, hooks,
+  skills, `AGENTS.md`) while working in a **derived vault**? **File a GitHub issue
+  against the base repo — don't fix it locally and don't open a PR.** See *Engine
+  bugs & improvements found in a derived vault* above.
+
+## Cursor Cloud specific instructions
+
+This repo has **no build step and no application server** — the "app" is a set of
+POSIX/Bash engine scripts under `.agents/scripts/` (plus `setup/`), and the notes are
+plain Markdown. Requirements (`bash`, `git`, `curl`, `jq`, `python3`) are baseline
+system tools; the update script only ensures the optional `PyYAML` used for
+full-fidelity lint. There is nothing to keep "running" in the background.
+
+- **Lint check:** `.agents/scripts/lint-vault.sh` (add `PRIMARY_TAG=<tag>` or paths to
+  scope). Exit 0 = clean, 1 = offenders. With `python3`+PyYAML it does a real YAML
+  parse; with neither PyYAML nor Ruby it prints a `note:` and falls back to a
+  narrower heuristic (still valid, just less thorough) — not an error.
+- **Tests:** the `.agents/scripts/test-*.sh` scripts are self-contained offline smoke
+  tests (`test-lint-vault.sh`, `test-mirror-smoke.sh`, `test-dream-smoke.sh`).
+- **Run/setup:** `.agents/scripts/init-vault.sh --yes` (non-interactive; env vars
+  `VAULT_NAME`/`VAULT_TAGLINE`/`VAULT_PURPOSE`/`PRIMARY_TAG`) is the `/setup-vault`
+  flow. It **mutates tracked files** (`index.md`, `log.md`, `README.md`, `llms.txt`,
+  `.agents/vault-profile.md`), seeds `hot.md`/`.agents/dream-state`, and **deletes
+  `base_seed: true` example notes** — so run it on a throwaway copy when only
+  verifying the environment, not on the repo you intend to commit.
+- **Uninitialized-template lint state (not a bug):** on a fresh checkout,
+  `lint-vault.sh` flags `index.md` and `log.md` as *invalid YAML* because their
+  frontmatter still holds the `{{PRIMARY_TAG}}` placeholder (`tags: [{{PRIMARY_TAG}}]`
+  isn't parseable). Running `init-vault.sh` resolves it and the vault lints clean.
+- **Known pre-existing failure — `test-dream-smoke.sh` fails on Linux.**
+  `.agents/scripts/dream-scan.sh` (`mtime_epoch`, ~line 137) tries BSD `stat -f %m`
+  before GNU `stat -c %Y`; on GNU/Linux `stat -f` means `--file-system` and leaks
+  multi-line filesystem info to stdout, so the numeric mtime comparison breaks
+  (`[: … integer expression expected`). This is a cross-platform bug in the code, **not
+  an environment problem** — the other two suites and the linter pass. It reproduces on
+  any GNU-coreutils box; it "passes" on macOS/BSD `stat`.

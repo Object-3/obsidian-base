@@ -79,6 +79,12 @@ Tell them, briefly:
 ## Notes
 - Idempotent — safe to re-run. When stuck, prefer reading `.agents/scripts/sync-skills.sh`
   (the `mirror_user_scope` function) and running its steps over guessing.
+- **Self-heal means working around a step, not rewriting the engine.** If the script
+  itself is buggy, do **not** edit `sync-skills.sh` in this vault and do **not** open a
+  PR against the base repo — **file a GitHub issue** against the upstream base
+  (`.agents/.base-url` if set, else `Object-3/obsidian-base`) with the error and your
+  proposed fix in the body. See *Engine bugs & improvements found in a derived vault*
+  in `AGENTS.md`.
 - The manifest (`{owned, lock_hash, vault_path, written}`) is the source of truth for
   which copies are *ours* (safe to refresh) vs *yours* (never touched).
 - This skill is hand-authored and repo-local (not vendored, not in the lock);

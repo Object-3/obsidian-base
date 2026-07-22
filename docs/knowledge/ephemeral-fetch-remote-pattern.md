@@ -11,6 +11,7 @@ source: ce-code-review of PR #26 (make the base git remote ephemeral) — empiri
 related:
   - "[[vendor-skills-into-repo-for-cloud-sessions]]"
   - "[[vet-vendored-skills-and-avoid-sync-clobber]]"
+  - "[[de-id-scan-working-tree-not-git-diff]]"
 ---
 
 # Ephemeral fetch remotes: a dedicated, reclaimable name beats a standing one
