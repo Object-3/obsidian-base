@@ -105,6 +105,7 @@ grow in as the vault expands.
 | `plans/` | In-progress plans & brainstorms | `kw-plan` / `kw-work` write; `past-work-researcher` reads |
 | `.agents/` | **Agent home (agnostic):** `vault-profile.md`, `skills/`, `agents/`, `scripts/` | engine |
 | `.agents/dream-state` | Committed watermark (ISO-8601 timestamp) of the last `/vault-dream` run; advances only when the dream's PR is merged. Per-vault state — seeded by `init-vault.sh`, not overlaid by `update-base`. | mechanism |
+| `.agents/.base-url` | Persisted fork/custom base git URL (one line). Per-vault, **tracked**, written by setup when a non-default URL is used (or hand-edited to permanently pin a fork) — **never** overlaid by `update-base`. Must not contain credentials (`user:token@`); authenticate via git credential helper or SSH. | mechanism |
 | `.claude/`, `.codex/` | Tool-specific config; `skills`/`agents` here are pointers to `.agents/` | engine |
 | `.obsidian/` | Obsidian config | engine |
 
@@ -309,7 +310,7 @@ including ephemeral cloud containers that don't auto-install them.
   `.agents/skill-sources.json` (base-owned); the sync **merges both**.
 - **Get base improvements:** run `.agents/scripts/update-base.sh` (or the
   `/update-base` skill). It's **git-native** — it fetches from the base repo via an
-  **ephemeral** `base` git remote (added for the fetch, then removed, so nothing standing
+  ephemeral `base-ephemeral` git remote (added for the fetch, then removed, so nothing standing
   can be mis-picked in Obsidian Git and push private notes to the public template) and
   overlays only the base-owned engine paths (including the curated `skill-sources.json`),
   leaving your notes, `vault-profile.md`, and `skill-sources.local.json` untouched. A

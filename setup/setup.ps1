@@ -13,7 +13,9 @@
 # VAULT_NAME, MCP_CLIENTS=desktop|code|both|none, MIRROR_SKILLS=ask|yes|no).
 $ErrorActionPreference = "Stop"
 
-$BaseRepoUrl = $env:BASE_REPO_URL; if (-not $BaseRepoUrl) { $BaseRepoUrl = "https://github.com/Object-3/obsidian-base.git" }
+# Keep in sync with DEFAULT_BASE_REPO_URL in setup/lib.sh (bash source of truth).
+$DefaultBaseRepoUrl = "https://github.com/Object-3/obsidian-base.git"
+$BaseRepoUrl = $env:BASE_REPO_URL; if (-not $BaseRepoUrl) { $BaseRepoUrl = $DefaultBaseRepoUrl }
 $VaultParent = $env:VAULT_PARENT; if (-not $VaultParent) { $VaultParent = "$HOME\Documents" }
 $VaultName   = $env:VAULT_NAME
 $McpClients  = $env:MCP_CLIENTS;  if (-not $McpClients)  { $McpClients = "both" }
@@ -58,18 +60,26 @@ if (Test-Path (Join-Path $VaultDir ".git")) {
   Say "Vault already exists at $VaultDir - reusing it."
 } else {
   New-Item -ItemType Directory -Force -Path $VaultParent | Out-Null
+  # Reject credentialed URLs before clone (same rule as persist_base_url / bash setup.sh)
+  # so failure leaves no half-built vault directory.
+  if ($BaseRepoUrl -match '(?i)^https?://[^/]*@') {
+    throw "BASE_REPO_URL must not embed credentials (https://user:token@…). Use a bare URL; authenticate via git credential helper or SSH."
+  }
   Say "Creating your vault at $VaultDir (from the base template)..."
   git clone --depth 1 $BaseRepoUrl $VaultDir
   Set-Location $VaultDir
   Remove-Item -Recurse -Force .git
-  # No standing `base` git remote: update-base.sh adds one ephemerally per fetch and removes
-  # it, so `base` can't be mis-picked in Obsidian Git's remote picker and push private notes
-  # into the (public) template. Persist a NON-DEFAULT base URL so update-base still finds a
-  # fork/custom base; the public default needs nothing. Clear any .base-url the clone source
-  # carried first, so the base is exactly what setup resolved — not a stowaway from the clone.
+  # No standing `base` git remote: update-base.sh adds `base-ephemeral` per fetch and
+  # removes it. Persist a NON-DEFAULT base URL so update-base still finds a fork/custom
+  # base; the public default needs nothing. Clear any .base-url the clone source carried.
+  # .agents/.base-url is tracked and must not hold secrets (same rule as persist_base_url).
   Remove-Item -Force -ErrorAction SilentlyContinue ".agents\.base-url"
-  if ($BaseRepoUrl -ne "https://github.com/Object-3/obsidian-base.git") {
-    Set-Content ".agents\.base-url" $BaseRepoUrl -NoNewline
+  if ($BaseRepoUrl -ne $DefaultBaseRepoUrl) {
+    # UTF-8 no-BOM + trailing LF so bash resolve_base_url / update-base can read it.
+    [System.IO.File]::WriteAllText(
+      (Join-Path $VaultDir ".agents\.base-url"),
+      ($BaseRepoUrl + "`n")
+    )
   }
   # Explicit -b main so the default branch never inherits the machine's init.defaultBranch
   # (may be `master`); fall back for git < 2.28. The initial commit is DEFERRED to after

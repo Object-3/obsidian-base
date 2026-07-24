@@ -189,6 +189,76 @@ check "sync eradicated legacy mcp-obsidian"          "! mcp_exists claude_deskto
 bash "$ROOT/setup/sync-mcp.sh" --check "$SV" >/dev/null 2>&1; sync_rc=$?
 check "sync-mcp --check is converged (exit 0)" "[ $sync_rc -eq 0 ]"
 
+echo "== base URL resolve + persist (#31 / #30) =="
+BR="$SANDBOX/base-url-repo"
+mkdir -p "$BR/.agents"
+# default when nothing is set
+unset BASE_REPO_URL BASE_REPO
+check "resolve → public default" "[ \"\$(resolve_base_url \"$BR\")\" = \"$DEFAULT_BASE_REPO_URL\" ]"
+# BASE_REPO shorthand
+check "resolve → BASE_REPO env" "[ \"\$(BASE_REPO=Org/fork resolve_base_url \"$BR\")\" = 'https://github.com/Org/fork.git' ]"
+# .base-url wins over legacy remote; whitespace-only falls through
+printf 'https://example.com/fork.git\n' > "$BR/.agents/.base-url"
+check "resolve → .base-url file" "[ \"\$(resolve_base_url \"$BR\")\" = 'https://example.com/fork.git' ]"
+# BASE_REPO env beats .base-url file
+check "resolve → BASE_REPO beats .base-url" \
+  "[ \"\$(BASE_REPO=Org/other resolve_base_url \"$BR\")\" = 'https://github.com/Org/other.git' ]"
+printf '   \n' > "$BR/.agents/.base-url"
+# Stub `git remote get-url base` — nesting a real git repo inside this worktree
+# (or under /tmp) is blocked/unsafe in the Cursor sandbox, and git -C walks up
+# to the enclosing vault. Integration suite covers real remotes.
+REAL_GIT="$(command -v git)"
+cat > "$SANDBOX/bin/git" <<STUB
+#!/usr/bin/env bash
+if [ "\${1:-}" = "-C" ]; then shift 2; fi
+if [ "\${1:-}" = "remote" ] && [ "\${2:-}" = "get-url" ] && [ "\${3:-}" = "base" ]; then
+  printf '%s\n' "https://example.com/legacy.git"; exit 0
+fi
+exec "$REAL_GIT" "\$@"
+STUB
+chmod +x "$SANDBOX/bin/git"
+check "whitespace .base-url falls through to legacy remote" \
+  "[ \"\$(resolve_base_url \"$BR\")\" = 'https://example.com/legacy.git' ]"
+rm -f "$SANDBOX/bin/git"   # restore real git for any later checks
+# env wins over file
+printf 'https://example.com/fork.git\n' > "$BR/.agents/.base-url"
+check "resolve → BASE_REPO_URL env wins" \
+  "[ \"\$(BASE_REPO_URL=https://env.example/x.git resolve_base_url \"$BR\")\" = 'https://env.example/x.git' ]"
+# poisoned tracked .base-url must die (no scrub); env one-shot still wins first
+printf 'https://user:ghp_x@github.com/Org/fork.git\n' > "$BR/.agents/.base-url"
+if ( resolve_base_url "$BR" ) >/dev/null 2>&1; then
+  bad "resolve credentialed .base-url should die"
+else
+  ok "resolve credentialed .base-url rejected"
+fi
+check "resolve env still overrides poisoned file" \
+  "[ \"\$(BASE_REPO_URL=https://env.example/ok.git resolve_base_url \"$BR\")\" = 'https://env.example/ok.git' ]"
+# persist: default → no file; clean fork → file; credentials → reject
+rm -f "$BR/.agents/.base-url"
+persist_base_url "$DEFAULT_BASE_REPO_URL" "$BR"
+check "persist default writes nothing" "[ ! -e \"$BR/.agents/.base-url\" ]"
+persist_base_url "https://example.com/clean-fork.git" "$BR"
+check "persist clean fork writes bare URL" \
+  "[ \"\$(tr -d '[:space:]' <\"$BR/.agents/.base-url\")\" = 'https://example.com/clean-fork.git' ]"
+# persist default must clear an existing fork file (not only no-op on empty)
+persist_base_url "$DEFAULT_BASE_REPO_URL" "$BR"
+check "persist default clears prior fork .base-url" "[ ! -e \"$BR/.agents/.base-url\" ]"
+persist_base_url "https://example.com/clean-fork.git" "$BR"
+if ( persist_base_url "https://user:ghp_x@github.com/Org/fork.git" "$BR" ) >/dev/null 2>&1; then
+  bad "persist credentialed URL should die"
+else
+  ok "persist credentialed URL rejected"
+fi
+# reject-before-mutate: existing clean file must survive; no credentialed content
+check "reject preserves prior clean .base-url" \
+  "[ \"\$(tr -d '[:space:]' <\"$BR/.agents/.base-url\")\" = 'https://example.com/clean-fork.git' ]"
+check "no credentialed .base-url after reject" \
+  "! grep -q '@' \"$BR/.agents/.base-url\" 2>/dev/null"
+check "userinfo detector: https token@" "base_url_has_userinfo 'https://token@host/r.git'"
+check "userinfo detector: user:pass@" "base_url_has_userinfo 'https://u:p@host/r.git'"
+check "userinfo detector: scp SSH left alone" "! base_url_has_userinfo 'git@github.com:Org/r.git'"
+check "userinfo detector: ssh://git@ left alone" "! base_url_has_userinfo 'ssh://git@github.com/Org/r.git'"
+
 echo "== wholesale removal (uninstall's loop) =="
 for_each_client wire "obsidian-one" 27140 "k1" >/dev/null 2>&1
 for c in $MCP_ALL_CLIENTS; do

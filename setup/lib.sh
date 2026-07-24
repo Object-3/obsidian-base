@@ -9,6 +9,9 @@
 #
 # It provides:
 #   - lib_slugify / lib_npx_bin / lib_platform            (small helpers)
+#   - DEFAULT_BASE_REPO_URL / resolve_base_url / persist_base_url
+#     (single source of truth for the base-repo URL default + precedence +
+#     credential-safe write of tracked .agents/.base-url)
 #   - lib_gh_release_dl / lib_provision_plugins           (Obsidian plugin setup)
 #   - lib_alloc_free_port                                 (per-vault port allocation)
 #   - an MCP client-adapter registry (wires the Local REST API plugin's own
@@ -35,6 +38,74 @@ if ! declare -F die  >/dev/null 2>&1; then die()  { printf '\033[1;31mERROR: %s\
 if ! declare -F have >/dev/null 2>&1; then have() { command -v "$1" >/dev/null 2>&1; }; fi
 
 lib_platform() { case "$(uname -s)" in Darwin) echo mac ;; Linux) echo linux ;; MINGW*|MSYS*|CYGWIN*) echo win ;; *) echo other ;; esac; }
+
+# ---- base-repo URL (default + resolve + credential-safe persist) ----------
+# Single source of truth for the public template URL and the precedence chain
+# used by update-base.sh / add-vault.sh / setup.sh. setup.ps1 mirrors
+# DEFAULT_BASE_REPO_URL (comment points here). setup.sh's pre-clone default
+# also mirrors this string — lib.sh isn't on disk yet for curl|bash installs.
+DEFAULT_BASE_REPO_URL="${DEFAULT_BASE_REPO_URL:-https://github.com/Object-3/obsidian-base.git}"
+
+# True when an HTTP(S) URL embeds userinfo (https://user@host or https://user:pass@host).
+# scp-style SSH (git@host:path) and ssh://git@host/… are left alone — those are
+# auth forms, not embedded secrets. Tracked .agents/.base-url must never hold
+# HTTPS token/password userinfo.
+base_url_has_userinfo() { printf '%s' "$1" | grep -Eqi '^https?://[^/]*@'; }
+
+# Resolve which base URL this vault should fetch from. Optional repo-root arg
+# (defaults to cwd). Precedence matches update-base.sh's historical chain:
+#   BASE_REPO_URL env
+#   → BASE_REPO env (expand to https://github.com/${BASE_REPO}.git)
+#   → .agents/.base-url (trim whitespace; empty/missing → fall through)
+#   → git remote get-url base (legacy standing remote)
+#   → DEFAULT_BASE_REPO_URL
+resolve_base_url() {
+  local root="${1:-.}" url=""
+  if [ -n "${BASE_REPO_URL:-}" ]; then
+    printf '%s\n' "$BASE_REPO_URL"; return 0
+  fi
+  if [ -n "${BASE_REPO:-}" ]; then
+    printf 'https://github.com/%s.git\n' "$BASE_REPO"; return 0
+  fi
+  if [ -s "$root/.agents/.base-url" ]; then
+    url="$(tr -d '[:space:]' <"$root/.agents/.base-url")"
+    if [ -n "$url" ]; then
+      # Fail closed on poisoned tracked file — never scrub and never hand a
+      # credentialed URL to update-base (which echoes it). Env BASE_REPO_URL
+      # may still embed userinfo for a one-shot private fetch.
+      if base_url_has_userinfo "$url"; then
+        die "Refusing credentialed URL in tracked .agents/.base-url. Replace it with a bare URL (no user:token@); authenticate with a git credential helper or SSH instead."
+      fi
+      printf '%s\n' "$url"; return 0
+    fi
+  fi
+  if url="$(git -C "$root" remote get-url base 2>/dev/null)" && [ -n "$url" ]; then
+    if base_url_has_userinfo "$url"; then
+      die "Refusing credentialed URL from legacy 'base' remote. Repoint it to a bare URL, or remove it and use .agents/.base-url / BASE_REPO_URL."
+    fi
+    printf '%s\n' "$url"; return 0
+  fi
+  printf '%s\n' "$DEFAULT_BASE_REPO_URL"
+}
+
+# Write (or clear) tracked .agents/.base-url for <repo_root>. Always clears
+# first. Writes only when url is non-empty AND differs from the public default.
+# Rejects credentialed URLs with a clear error (no silent scrub) — the file is
+# committed and must not contain secrets. Authenticate via git credential
+# helper / SSH instead of embedding tokens in the URL.
+persist_base_url() {
+  local url="$1" root="${2:-.}" dest
+  dest="$root/.agents/.base-url"
+  mkdir -p "$root/.agents"
+  # Reject before mutating so a bad call can't wipe a good existing file.
+  if [ -n "$url" ] && base_url_has_userinfo "$url"; then
+    die "Refusing to write credentials into tracked .agents/.base-url (URL contains userinfo). Pass a bare URL (no user:token@); authenticate with a git credential helper or SSH instead."
+  fi
+  rm -f "$dest"
+  [ -n "$url" ] || return 0
+  [ "$url" = "$DEFAULT_BASE_REPO_URL" ] && return 0
+  printf '%s\n' "$url" > "$dest"
+}
 
 # Vault name -> filesystem/label slug (lowercase, [a-z0-9-] only). Also the
 # basis for the per-vault MCP label `obsidian-<slug>`.
