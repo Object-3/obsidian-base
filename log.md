@@ -143,3 +143,18 @@ lint passes. Newest at the bottom. Prefix entries with `## [YYYY-MM-DD] <type> |
   `classification:` pre-commit guard was already fine (it scans *staged* content) — the gap was
   the interactive pre-stage scan.
 - New learning [[de-id-scan-working-tree-not-git-diff]].
+
+## 2026-07-28 — Cloud-MCP ADR amended with planning decisions
+- [[cloud-mcp-deployment-architecture]] amended after the `ce-plan` implementation
+  plan and its annotation review: **decision 6 restated** — the cloud server's single
+  writer targets a *configured write target*, defaulting to a weekly
+  `knowledge/<YYYY>-W<ww>` branch merged to `main` via one human-reviewed PR per week
+  (annotation review reversed the "main by default" position); **decisions 15–23
+  added**, folding back what planning resolved beyond the record (GitHub App write
+  credential, ack-after-push durability + conflict branches, typed branch-naming
+  convention, tool-level plane guards with a fail-closed de-id gate, auth-facade
+  contract with audience validation, endpoint identity + the no-NAT networking cost
+  correction, runner injection containment + metadata-only audit invariant, SSM
+  domain config, GHCR image home + the at-most-one-task invariant); **Undeploy**
+  section added (ordered flow, weekly-mode drain precondition, $0 end state).
+  Provenance: implementation plan 2026-07-22-001 (machine-local ce-plan doc).

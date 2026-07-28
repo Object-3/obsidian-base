@@ -17,7 +17,7 @@ whenever you add or materially change a note (see operating rules in `AGENTS.md`
 
 ## Notes
 
-- [[cloud-mcp-deployment-architecture]] — `decision-record` · opt-in AWS cloud deployment of a vault as an authenticated read/write MCP endpoint: narrow markdown-only server composed with native M365/Drive MCPs, Fargate-first with a clean AgentCore migration path, three-tier data-control ladder (shareable → confidential → PHI) enforced by OAuth scopes, `_sensitive/` retained as the routing boundary.
+- [[cloud-mcp-deployment-architecture]] — `decision-record` · opt-in AWS cloud deployment of a vault as an authenticated read/write MCP endpoint: narrow markdown-only server composed with native M365/Drive MCPs, Fargate-first with a clean AgentCore migration path, three-tier data-control ladder (shareable → confidential → PHI) enforced by OAuth scopes, `_sensitive/` retained as the routing boundary. Amended 2026-07-28 post-planning: decision 6 restated (writes target a weekly human-reviewed knowledge branch by default), decisions 15–23 added (write credential, durability, branch conventions, tool-level guards, auth facade, endpoint identity + cost correction, runner containment, domain config, single-task invariant), Undeploy section added.
 
 ## Plans
 
