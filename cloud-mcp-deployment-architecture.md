@@ -4,7 +4,7 @@ type:    decision-record
 status:  active
 tags:    [obsidian-base, cloud, mcp, security, hipaa, architecture, cdk, aws]
 created: 2026-07-21
-updated: 2026-07-22
+updated: 2026-07-28
 confidence: high
 sources: 31
 related:
@@ -21,6 +21,17 @@ related:
 > autonomous runner moved Routines-first → in-VPC-first with dual auth rails, and
 > PHI mode moved from build item to paper design.
 
+> [!note] Amended 2026-07-28 after `ce-plan` + annotation review of the resulting
+> implementation plan. **Decision 6 is restated** (the single writer targets a
+> *configured write target*, defaulting to a weekly human-reviewed knowledge branch —
+> no longer `main` directly); **decisions 15–23 are new**, folding back what planning
+> resolved beyond this record (write credential, durability/conflict semantics,
+> branch conventions, tool-level guards, auth-facade details, endpoint identity +
+> networking cost correction, runner containment, domain config, image home + the
+> single-task invariant); an **Undeploy** section is added. The implementation plan
+> (ce-plan, machine-local) holds unit-level detail; this record stays the
+> decision-grade source.
+
 ## TL;DR
 
 Add an **opt-in cloud deployment module** to obsidian-base: a vault derived from the
@@ -34,7 +45,9 @@ official MCP software development kit (SDK)) living in a sibling repo
 **one deployment per trust domain** (not per vault), provisioned by an idempotent
 **`/deploy-cloud-mcp`** skill driving **AWS Cloud Development Kit (CDK)** — Fargate
 first, Bedrock AgentCore as a later module swap; **cloud-primary write topology**
-(the server is the single writer to `main`; local Obsidian demotes to a pull-only
+(the server is the single writer to the vault's **configured write target** — by
+default a weekly `knowledge/` branch merged into `main` through one human-reviewed
+PR per week, decision 6 as restated; local Obsidian demotes to a pull-only
 replica); the **`_sensitive/` plane stays OneDrive/Drive-authoritative**, reached by
 a one-way `rclone` mirror in and provider-API write-through out; an **in-VPC
 scheduled runner ships in v1** with dual auth rails (subscription OAuth token now,
@@ -102,16 +115,28 @@ contractual rail the tokens ride, per data plane*.
    image, Streamable HTTP MCP with port/path from environment, all state external
    (Elastic File System (EFS) / git / Secrets Manager), inbound auth = JSON Web
    Token (JWT) validation against a **configurable OpenID Connect (OIDC) issuer**.
-6. **Write topology: cloud-primary, one writer per plane (new section — the prior
-   revision ignored the second working tree).** The cloud server is the **single
-   writer to `main`**: interactive edits commit to `main` audit-logged (a cheap
-   fetch→rebase→push absorbs occasional GitHub-web-UI edits); autonomous jobs are
-   **always branch + pull request (PR)** — unchanged dream rails. The deploy skill
-   **demotes local Obsidian to a pull-only replica** (Obsidian Git auto-commit/push
-   off; graph/search/reading keep working); `/doctor` checks the demotion on
-   deployed vaults (it is convention-enforced, not physics). Web exploration
-   (Quartz read-only publish) and a self-hosted web editor (SilverBullet-class) are
-   deferred, separable follow-ups; GitHub's web editor is the interim manual path.
+6. **Write topology: cloud-primary, one writer per plane — RESTATED 2026-07-28
+   (supersedes "single writer to `main`").** The cloud server is the **single
+   writer to the vault's configured write target**. **Default: a rolling weekly
+   knowledge branch** (`knowledge/<YYYY>-W<ww>`) that accrues all interactive MCP
+   writes and reaches `main` only through **one human-reviewed PR per week** — the
+   team's standing review surface over agent-mediated knowledge; `main` remains
+   selectable per vault for continuous writes with no weekly gate. Interactive
+   edits are audit-logged either way; a cheap fetch→rebase→push absorbs upstream
+   edits *on the target branch*; autonomous jobs are **always branch + PR into the
+   write target** — unchanged dream rails. Consequences stated plainly: in weekly
+   mode, GitHub-web-UI edits on `main` are **not** absorbed (the weekly merge is
+   the only reconciliation channel; a divergence alarm watches it), and the demoted
+   local replica — which pulls `main` — **lags by up to a week** (the MCP surface
+   is unaffected; the operator accepts this at deploy time, shortens the cadence,
+   or selects `main`). If a week's PR is still open at the boundary, the next week
+   **chains from it**, never from `main`, so no write is stranded; chain depth is
+   alarmed. The deploy skill **demotes local Obsidian to a pull-only replica**
+   (Obsidian Git auto-commit/push off; graph/search/reading keep working);
+   `/doctor` checks the demotion on deployed vaults (it is convention-enforced,
+   not physics). Web exploration (Quartz read-only publish) and a self-hosted web
+   editor (SilverBullet-class) are deferred, separable follow-ups; GitHub's web
+   editor is the interim manual path.
 7. **Sensitive plane transport (new section — the prior revision had no way for
    `_sensitive/` to reach the cloud at all, since it is gitignored by design).**
    **OneDrive/Drive stays authoritative for the sensitive plane, everywhere.**
@@ -207,6 +232,127 @@ contractual rail the tokens ride, per data plane*.
     list**; nothing in v1 closes the door (service choices stay HIPAA-eligible),
     and the tier flag exists in config from day one.
 
+*Decisions 15–23 added 2026-07-28: what planning resolved beyond this record
+(plan decisions D5–D21, consolidated — the mapping is noted per decision).*
+
+15. **GitHub write credential: a GitHub App per trust domain** *(plan D5)*. Bot
+    identity (name parity `akb-mcp-<domain>`), installed on the vault repo(s) with
+    `contents:write` + `pull_requests:write` and **nothing else** — no `workflows`,
+    no administration, no org-level permissions; the permission floor doubles as
+    the prompt-injection blast-radius bound (decision 21). Installation tokens
+    (1 h) are minted at runtime from the App key in Secrets Manager and live in
+    process memory only. Rotation = rotate the secret + force a new deployment
+    (task-start-frozen secrets make redeploy the mechanism). Branch protection on
+    the write target: none, or bypass-allowance for the App — a stated deviation
+    the deploy skill checks and records. Fallback: fine-grained personal access
+    token with its expiry recorded for `/doctor`.
+16. **Write durability and conflict semantics** *(plan D8–D10; resolves this
+    record's "disposable EFS" contradiction)*. An interactive write is acknowledged
+    **only after push succeeds**; boot reconciliation commits-or-quarantines dirty
+    state (`recovery/<ts>`), pushes unpushed commits, and rebases — first boot
+    gates endpoint health on clone + index build only, **never on the first mirror
+    pass** (a Graph outage must not take the git plane down). Disaster-recovery
+    re-clone is gated on the write target being push-clean, with an
+    unpushed-commit-age alarm as the belt. Rebase content conflicts park on
+    `conflict/<ts>` with the diff surfaced in the tool result — one policy for all
+    writers. Read freshness: periodic fetch/fast-forward on the ~60 s mirror
+    cadence. Sensitive-plane writes are PUT-first with `If-Match` ETags (412s
+    surface, never silent clobbers) and bounded `Retry-After` budgets that release
+    the serialization lock across sleeps.
+17. **Branch naming is a stated convention, not ad-hoc** *(plan D21 + D20
+    mechanics)*. Every machine-created branch carries a **typed prefix + UTC
+    timestamp** (ISO-8601 basic form, no colons): `knowledge/<YYYY>-W<ww>` (weekly
+    write target; human-readable date range rides the PR title),
+    `dream/<ts>-<slug>` (PR title repeats timestamp + description),
+    `conflict/<ts>`, `recovery/<ts>`. Pre-flight collision checks and age-based
+    cleanup key off these prefixes, so the convention is load-bearing; generators
+    are tested against the patterns.
+18. **Plane routing and guards move to tool level** *(plan D7)*. Git hooks do not
+    run for the cloud writer, so the server enforces: `_sensitive/**` reachable
+    **only** via the provider write-through (never the git plane); tracked-plane
+    writes reject `classification: confidential*` frontmatter; the ~25 MB size
+    guard is mirrored; and the confidential-**name scan** (fed by the vault's
+    gitignored names file, mirrored in from the sensitive plane) runs on both the
+    runner's pre-commit gate and interactive tracked-plane writes. **The gate
+    fails closed**: sensitive plane configured but names file absent/empty ⇒
+    autonomous runs abort with an alarm and interactive tracked writes are
+    rejected with a named error; a vault with no sensitive plane is legitimately a
+    no-op. Plane routing + classification are the structural controls;
+    name-matching is the incomplete-by-design backstop, its staleness surfaced by
+    `/doctor`.
+19. **Auth facade details** *(plan D2, D3, D6; extends decision 8)*. The server
+    serves RFC 9728 protected-resource metadata + the 401 handshake; a thin
+    authorization-server facade in the service task (FastMCP vs hand-rolled —
+    spike decides) serves **corrected AS metadata** (Cognito's discovery omits
+    `code_challenge_methods_supported`), supports **CIMD first** with DCR
+    fallback, and carries the confused-deputy contract (per-client consent,
+    exact-match redirect URIs, issuer-URL consistency). **Scopes are
+    `{vault}:read`/`write`/`sensitive` — write is not implied by read**; v1 maps
+    `cognito:groups` server-side. Tokens are validated on issuer, `token_use`,
+    client allowlist, expiry, **and audience — scope alone is not audience
+    proof**. Registrations must survive task replacement (a rolling update never
+    forces connector re-auth). Account hardening: no self-service sign-up,
+    mandatory MFA, strengthened password policy; offboarding revokes live refresh
+    tokens, not just future logins. **Protocol surface v1: tools only** —
+    resources/prompts/completions are not served (completions can leak sensitive
+    note titles); tool lists are filtered at `tools/list` *and* enforced at
+    `tools/call` (the call check is the boundary); search filters inside the
+    query, never post-filter.
+20. **Endpoint identity, networking, and the cost correction** *(plan D4, D15;
+    amends the cost section below)*. Each trust domain supplies a **custom domain
+    + ACM certificate**; the **hosted zone is a one-time, long-lived bootstrap
+    resource outside the stacks** (stacks reference it and own only records +
+    certs — a zone inside a disposable stack would reassign nameservers on every
+    recreate and drag the operator back to the parent DNS provider, and the zone
+    must survive undeploy). Certificate-transparency logs make any chosen hostname
+    publicly enumerable — accepted; auth is the boundary. ALB is HTTPS-only, TLS
+    1.2+, **no plaintext listener and no 3xx on the MCP URL**; explicit 300 s idle
+    timeout that decision 16's retry budgets stay under. One hostname serves the
+    whole deployment (vault selection by validated tool argument, never by path or
+    subdomain). **Networking cost correction:** interface VPC endpoints (~$29/mo/AZ)
+    cannot reach GitHub/Graph/Anthropic — endpoints never eliminate NAT here; v1
+    uses a **public-subnet task with a public IP (~$3.60/mo), inbound locked to
+    the ALB security group** — no NAT gateway. WAF is consciously deferred
+    (Anthropic's egress range is published, ChatGPT's is not; strict allowlisting
+    is impractical); the compensating **rate limiting is a built control**:
+    per-IP on unauthenticated surfaces, per-subject on `tools/call`, a cap on
+    total DCR registrations.
+21. **Runner containment and plane access** *(plan D11, D16, D17, D19)*. The dream
+    job works in its **own ephemeral clone** (never the service tree — the weekly
+    two-writer race is eliminated by construction); sensitive-plane **reads** come
+    from a separate **read-only mirror access point, commercial rail only**; **v1
+    dreams make no sensitive-plane writes** — proposals ride the dream PR as
+    de-identified, title-level stubs with opaque pointers the human resolves
+    locally (pre-applied sensitive writes would escape the merge gate, which fires
+    after provider writes land). Injection is a first-class threat: the runner
+    reads attacker-influenceable content while holding write credentials —
+    controls are the decision-15 permission floor, a **PR path allowlist** (note
+    paths only; engine/CI paths rejected before push), digest-as-quoted-data, and
+    the **human merge gate named as an injection control**. The audit log is
+    **metadata-only** (CloudWatch is IAM-governed, not vault-scope-governed —
+    content there would bypass the scope model; the invariant covers *all* task
+    output, with leak tests). The dream digest is reconstructed runner-side: tool
+    sequences + paths from the log, tracked-plane diffs re-derived from git in the
+    job's clone; search-query text is deliberately not reconstructable — an
+    accepted degradation, recorded so nobody "fixes" it by widening the log.
+22. **Multi-vault domain config lives in a versioned SSM parameter** *(plan D18,
+    D20 recording)*, owned by the deploy skill check-then-set and resolved at
+    **synth time** (CloudFormation dynamic references cannot shape topology).
+    Without a domain-level source of truth, "rerun = no-op" (decision 4) breaks
+    the day the second vault lands. Each vault's entry records repo, tier, mirror
+    remotes, and write-target choice; partial undeploy is an edit to this config.
+23. **Image home, runtime, and the single-task invariant** *(plan D13, D14)*.
+    Versioned container images publish to GitHub Container Registry with immutable
+    tags (decoupled from any single AWS account; ECR mirroring is the documented
+    alternative). Node 22, pnpm, zod v4, vitest. **"At most one service task" is
+    an explicit, load-bearing invariant** (the in-process write mutex is only a
+    global lock because of it) — asserted by an IaC-level test and an EFS
+    lockfile, and **signposted at the point of change**: the test's failure
+    message, the lockfile error, and the runbook all name what must change before
+    a second task (external writer lease, per-vault locks, always-on loops
+    extracted to schedulable one-shots) — the same homework the AgentCore swap
+    (decision 9) needs, so the two futures share it.
+
 ## Details
 
 ### Content model (unchanged)
@@ -237,14 +383,36 @@ provider automatically; the module ships an updated fast-orient block for user-l
 docs. One server exposing N vaults beats N near-duplicate servers for model tool
 selection (no ambiguous same-named tools; `list_vaults` + a `vault` argument).
 
+### Undeploy (added 2026-07-28 — plan D12)
+
+Undeploy is a **first-class, ordered flow**, not an afterthought: (1) drain — final
+push, verify origin matches the working tree, no in-flight provider write; **in
+weekly-target mode the open knowledge PR must be merged or its abandonment
+explicitly acknowledged first** (else knowledge strands on an orphan branch while
+the re-promoted vault resumes writing `main`); (2) **export the CloudWatch audit
+logs** (they are the audit trail), then `cdk destroy`; (3) external revocations the
+IaC cannot do — Azure app/site grant, GitHub App uninstall, per-client connector
+removal; (4) re-promote local Obsidian (inverse config patch, per machine); (5)
+remove the vault-profile managed block (its presence is what keys `/doctor`'s cloud
+checks). Partial undeploy of one vault from a multi-vault domain is a config +
+scope + connector removal, never a stack teardown. End state of a full undeploy:
+**no stack, no idle resources, recurring cost $0** — the survivors are the exported
+audit archive, Secrets Manager entries inside their no-charge deletion window, and
+the $0 SSM domain-config parameter (removed when the last vault leaves the domain).
+The long-lived hosted zone (decision 20) survives by design, so a redeploy never
+re-touches the parent DNS provider.
+
 ### Cost (verified rates, July 2026; estimates are speculation)
 
 - Fargate floor ≈ **$38/mo per trust domain** (0.5 vCPU/1 GB ≈ $18 + Application
   Load Balancer ≈ $20) — flat as vaults are added to the domain. AgentCore bursty
   ≈ $5–15/mo at migration time (crossover ≈ 50% duty cycle).
-- Shared fixed: NAT gateway ~$33/mo *(replaceable with ~$7 VPC endpoints)*,
-  KMS/Secrets/CloudTrail ~$3–10/mo, EFS <$1 (markdown), CloudWatch ≈ $0
-  (always-free tier, retention capped), Cognito $0 (≤10k MAU).
+- Shared fixed *(corrected 2026-07-28 — decision 20)*: ~~NAT gateway ~$33/mo /
+  ~$7 VPC endpoints~~ — **neither**: interface endpoints cannot reach
+  GitHub/Graph/Anthropic, so v1 runs a public-subnet task with a public IP
+  (~$3.60/mo), inbound locked to the ALB security group. KMS/Secrets/CloudTrail
+  ~$3–10/mo, EFS <$1 (markdown), CloudWatch ≈ $0 (always-free tier, retention
+  capped), Cognito $0 (≤10k MAU), hosted zone $0.50/mo.
 - **Interactive tokens ≈ $0** (users' subscriptions). **Automation:** ≈ $0 on a
   subscription OAuth token; ≈ $5–20/mo weekly-cadence on the API rail. Machine-to-
   machine Cognito tokens $0.00225 each (pennies).
@@ -252,6 +420,11 @@ selection (no ambiguous same-named tools; `list_vaults` + a `vault` argument).
   future PHI mode remains the administrative compliance program, not servers.
 
 ## Recommendations (build order for ce-plan)
+
+> [!note] Executed 2026-07-22 → 2026-07-28: `ce-plan` turned this build order into a
+> nine-unit implementation plan (machine-local ce-plan document; annotation-reviewed).
+> The list below is retained as the original decision-time shape; the plan is the
+> live execution source.
 
 0. **Plan-phase research:** run `/research` on knowledge-graph tool surfaces (how
    the strongest vault-MCP servers expose link/graph/frontmatter queries) — feeds
