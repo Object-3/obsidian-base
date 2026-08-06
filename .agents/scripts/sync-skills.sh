@@ -317,6 +317,7 @@ if [ -f "$LOCK" ]; then
 fi
 
 VSKILLS=(); VAGENTS=(); FETCH_FAILURES=0
+UNRESOLVED_INCLUDES=()   # "<source>/<name>" for each `include` entry that matched nothing
 
 fetch() { # repo ref -> echoes extracted dir, or non-zero on failure
   local repo="$1" ref="$2" dest="$TMP/${repo//\//_}__$ref"
@@ -338,6 +339,7 @@ for i in $(seq 0 $((count - 1))); do
   apath=$(jq -r ".sources[$i].agentsPath // empty"      "$MANIFEST")
   inc=$(jq -r ".sources[$i].include // [] | .[]" "$MANIFEST" | paste -sd'|' -)
   [ -n "$inc" ] && inc="|$inc|"
+  inc_seen=""   # `|`-wrapped names this source actually produced (include mode only)
   echo ">> $name  ($repo @ $ref)"
   produced=0   # skills+agents this source contributed; 0 => failed/misconfigured source
 
@@ -359,9 +361,28 @@ for i in $(seq 0 $((count - 1))); do
       rm -rf "$stage"; cp -R "$sdir" "$stage"
       rm -rf "$CANON_SKILLS/$base"; mv "$stage" "$CANON_SKILLS/$base"
       VSKILLS+=("$base"); produced=$((produced+1)); echo "   skill: $base"
+      [ -n "$inc" ] && inc_seen="$inc_seen|$base|"
     done < <(find "$src/$spath" -type f -name 'SKILL.md' | sort)
   else
     echo "   ! skillsPath '$spath' not found in repo"
+  fi
+
+  # An `include` entry that matched nothing upstream is SILENT DRIFT: the skill was
+  # renamed, moved out of skillsPath, or deleted. The prune below removes it from the
+  # vendored set either way, so without this warning a curated skill disappears from
+  # INDEX.md with no signal — and a rename looks identical to a deletion, so the
+  # successor is never picked up. Warn per entry and summarize at the end.
+  # Deliberately NOT counted as a fetch failure: an upstream deletion is a legitimate
+  # prune, and gating on it would pin a dead skill in the tree forever.
+  if [ -n "$inc" ] && [ -n "$src" ]; then
+    while IFS= read -r want; do
+      [ -n "$want" ] || continue
+      case "$inc_seen" in
+        *"|$want|"*) ;;
+        *) echo "   ! include '$want' matched nothing in $repo@$ref — renamed, moved, or removed upstream; reconcile .agents/skill-sources.json"
+           UNRESOLVED_INCLUDES+=("$name/$want") ;;
+      esac
+    done < <(jq -r ".sources[$i].include // [] | .[]" "$MANIFEST")
   fi
 
   if [ -n "$apath" ] && [ -d "$src/$apath" ]; then
@@ -568,4 +589,14 @@ if [ -n "$TOTAL_FAILURE" ]; then
   echo "sync: nothing vendored — kept last-good skills, lock, INDEX & stamp; refreshed pointers (self-heals next run)"
 else
   echo "synced ${#VSKILLS[@]} skills, ${#VAGENTS[@]} agents (canonical: .agents/)"
+fi
+
+# Repeat unresolved includes at the very end: the per-source warning scrolls away behind
+# dozens of "skill:" lines, and this is the one class of drift that silently SHRINKS the
+# curated set. Non-fatal — the sync itself succeeded.
+if [ "${#UNRESOLVED_INCLUDES[@]}" -gt 0 ]; then
+  echo "sync: ${#UNRESOLVED_INCLUDES[@]} include entr$([ "${#UNRESOLVED_INCLUDES[@]}" -eq 1 ] && echo y || echo ies) matched nothing upstream:"
+  for u in "${UNRESOLVED_INCLUDES[@]}"; do echo "  - $u"; done
+  echo "  These were pruned from the vendored set. If a skill was RENAMED upstream, add its"
+  echo "  new name to .agents/skill-sources.json or it stays lost."
 fi

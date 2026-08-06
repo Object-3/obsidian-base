@@ -13,18 +13,16 @@
       "repo": "mattpocock/skills",
       "skillsPath": "skills",
       "include": [
-        "edit-article",
         "writing-fragments",
         "writing-beats",
         "writing-shape",
-        "decision-mapping",
         "grill-me",
         "grilling",
         "handoff",
         "teach",
-        "writing-great-skills"
+        "writing-for-agents"
       ],
-      "note": "Matt Pocock's KNOWLEDGE-WORK / WRITING / OBSIDIAN skills only. His engineering set is intentionally excluded — if needed it belongs in a separate code-focused vault. 'include' cherry-picks specific skill dirs across his personal/, in-progress/, and productivity/ folders."
+      "note": "Matt Pocock's KNOWLEDGE-WORK / WRITING / OBSIDIAN skills only. His engineering set is intentionally excluded — if needed it belongs in a separate code-focused vault. 'include' cherry-picks specific skill dirs across his in-progress/ and productivity/ folders. 2026-08-06: upstream removed 'edit-article' and 'decision-mapping' (no successor), and renamed 'writing-great-skills' -> 'writing-for-agents' (same thesis, broadened to cover AGENTS.md/CLAUDE.md) — include follows the rename. NOTE: sync-skills.sh does not warn when an 'include' entry no longer exists upstream, so a stale name here fails silently; re-check this list when a skill disappears from INDEX.md."
     },
     {
       "name": "corey-haines-marketing",
