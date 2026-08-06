@@ -192,9 +192,13 @@ check "sync-mcp --check is converged (exit 0)" "[ $sync_rc -eq 0 ]"
 echo "== base URL resolve + persist (#31 / #30) =="
 BR="$SANDBOX/base-url-repo"
 mkdir -p "$BR/.agents"
-# default when nothing is set
-unset BASE_REPO_URL BASE_REPO
-check "resolve → public default" "[ \"\$(resolve_base_url \"$BR\")\" = \"$DEFAULT_BASE_REPO_URL\" ]"
+# default when nothing is set. Assert the LITERAL, not $DEFAULT_BASE_REPO_URL —
+# comparing resolve_base_url's output to the variable it returns passes for any
+# value, so it could never catch the default drifting.
+check "resolve → public default" \
+  "[ \"\$(resolve_base_url \"$BR\")\" = 'https://github.com/Object-3/obsidian-base.git' ]"
+check "DEFAULT_BASE_REPO_URL is the public template literal" \
+  "[ \"\$DEFAULT_BASE_REPO_URL\" = 'https://github.com/Object-3/obsidian-base.git' ]"
 # BASE_REPO shorthand
 check "resolve → BASE_REPO env" "[ \"\$(BASE_REPO=Org/fork resolve_base_url \"$BR\")\" = 'https://github.com/Org/fork.git' ]"
 # .base-url wins over legacy remote; whitespace-only falls through
@@ -258,6 +262,68 @@ check "userinfo detector: https token@" "base_url_has_userinfo 'https://token@ho
 check "userinfo detector: user:pass@" "base_url_has_userinfo 'https://u:p@host/r.git'"
 check "userinfo detector: scp SSH left alone" "! base_url_has_userinfo 'git@github.com:Org/r.git'"
 check "userinfo detector: ssh://git@ left alone" "! base_url_has_userinfo 'ssh://git@github.com/Org/r.git'"
+# Normalization: a pasted leading space must not slip the `^https?://` anchor.
+check "userinfo detector: leading whitespace still caught" \
+  "base_url_has_userinfo '   https://u:ghp_x@host/r.git'"
+# ...and a credentialed SECOND line must not hide behind a clean first line.
+check "userinfo detector: credentialed second line caught" \
+  "base_url_has_userinfo 'https://host/clean.git
+https://u:ghp_x@host/r.git'"
+# resolve must read only the first non-blank line, so the two lines can never be
+# spliced into one string whose `@` sits past the first `/` (invisible to the anchor).
+printf 'https://example.com/clean.git\nhttps://u:ghp_x@evil.example/r.git\n' > "$BR/.agents/.base-url"
+check "resolve reads first line only (no multi-line splice)" \
+  "[ \"\$(resolve_base_url \"$BR\")\" = 'https://example.com/clean.git' ]"
+printf '\n\nhttps://example.com/after-blanks.git\n' > "$BR/.agents/.base-url"
+check "resolve skips leading blank lines" \
+  "[ \"\$(resolve_base_url \"$BR\")\" = 'https://example.com/after-blanks.git' ]"
+rm -f "$BR/.agents/.base-url"
+
+echo "== cross-file drift: duplicated default URL + userinfo regex =="
+# lib.sh owns DEFAULT_BASE_REPO_URL and base_url_has_userinfo, but setup.sh runs
+# before lib.sh is on disk (curl|bash) and setup.ps1 cannot source bash, so each
+# hand-copies both. Assert the copies still match instead of trusting a comment.
+check "setup.sh pre-clone default matches lib.sh" \
+  "grep -q 'PRECLONE_DEFAULT_BASE_REPO_URL=\"'\"\$DEFAULT_BASE_REPO_URL\"'\"' \"$ROOT/setup/setup.sh\""
+check "setup.ps1 default matches lib.sh" \
+  "grep -q '\\\$DefaultBaseRepoUrl = \"'\"\$DEFAULT_BASE_REPO_URL\"'\"' \"$ROOT/setup/setup.ps1\""
+check "setup.sh carries the userinfo regex" \
+  "grep -qF '^https?://[^/]*@' \"$ROOT/setup/setup.sh\""
+check "setup.ps1 carries the userinfo regex" \
+  "grep -qF '^https?://[^/]*@' \"$ROOT/setup/setup.ps1\""
+# The pre-commit hook is the fourth copy: it runs in an arbitrary vault where
+# setup/ may not exist, so it cannot source lib.sh either.
+check "pre-commit guard carries the userinfo regex" \
+  "grep -qF '^https?://[^/]*@' \"$ROOT/.githooks/pre-commit\""
+# setup.sh must not reintroduce a raw copy of the literal beside the constant.
+check "setup.sh has exactly one default-URL literal" \
+  "[ \"\$(grep -c 'https://github.com/Object-3/obsidian-base.git' \"$ROOT/setup/setup.sh\")\" -eq 1 ]"
+
+echo "== entry-point credential rejection (end-to-end) =="
+# The unit checks above call lib.sh directly; these run the actual scripts, so a
+# regression that moved or dropped an inline guard is caught. Both must fail
+# BEFORE cloning, leaving no vault directory behind.
+EP="$SANDBOX/entrypoint"; mkdir -p "$EP"
+setup_out="$SANDBOX/setup-cred.log"
+BASE_REPO_URL='https://u:ghp_x@github.com/Org/fork.git' VAULT_PARENT="$EP" VAULT_NAME='cred test' \
+  SKIP_PREREQS=1 NO_OPEN=1 MCP_CLIENTS=none MIRROR_SKILLS=no \
+  bash "$ROOT/setup/setup.sh" --yes >"$setup_out" 2>&1
+setup_rc=$?
+check "setup.sh rejects credentialed BASE_REPO_URL (non-zero exit)" "[ $setup_rc -ne 0 ]"
+# Assert the CREDENTIAL guard is what stopped it, not an unrelated failure.
+check "setup.sh failed on the credential guard" \
+  "grep -q 'must not embed credentials' \"$setup_out\""
+check "setup.sh left no vault directory behind" "[ ! -d \"$EP/cred-test\" ]"
+
+addvault_out="$SANDBOX/add-vault-cred.log"
+BASE_REPO_URL='https://u:ghp_x@github.com/Org/fork.git' VAULT_PARENT="$EP" VAULT_NAME='cred test2' \
+  SKIP_PREREQS=1 NO_OPEN=1 MCP_CLIENTS=none MIRROR_SKILLS=no \
+  bash "$ROOT/setup/add-vault.sh" --yes >"$addvault_out" 2>&1
+addvault_rc=$?
+check "add-vault.sh rejects credentialed BASE_REPO_URL (non-zero exit)" "[ $addvault_rc -ne 0 ]"
+check "add-vault.sh failed on the credential guard" \
+  "grep -q 'must not embed credentials' \"$addvault_out\""
+check "add-vault.sh left no vault directory behind" "[ ! -d \"$EP/cred-test2\" ]"
 
 echo "== wholesale removal (uninstall's loop) =="
 for_each_client wire "obsidian-one" 27140 "k1" >/dev/null 2>&1

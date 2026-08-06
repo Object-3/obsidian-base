@@ -14,8 +14,20 @@
 $ErrorActionPreference = "Stop"
 
 # Keep in sync with DEFAULT_BASE_REPO_URL in setup/lib.sh (bash source of truth).
+# setup/test-add-vault-smoke.sh asserts this literal and the regex below still
+# match lib.sh's DEFAULT_BASE_REPO_URL / base_url_has_userinfo, so drift fails CI
+# rather than relying on this comment.
 $DefaultBaseRepoUrl = "https://github.com/Object-3/obsidian-base.git"
 $BaseRepoUrl = $env:BASE_REPO_URL; if (-not $BaseRepoUrl) { $BaseRepoUrl = $DefaultBaseRepoUrl }
+
+# Reject a credentialed BASE_REPO_URL ONCE, before anything clones or writes.
+# Top-level rather than inside the clone branch: the "vault already exists"
+# branch skips that branch entirely, and the recovery block below still writes
+# $BaseRepoUrl into the git-TRACKED .agents\.base-url. Mirrors
+# base_url_has_userinfo in setup/lib.sh (PowerShell cannot source bash).
+if (($BaseRepoUrl -split "`n" | ForEach-Object { $_.Trim() }) -match '(?i)^https?://[^/]*@') {
+  throw "BASE_REPO_URL must not embed credentials (https://user:token@…). Use a bare URL; authenticate via git credential helper or SSH."
+}
 $VaultParent = $env:VAULT_PARENT; if (-not $VaultParent) { $VaultParent = "$HOME\Documents" }
 $VaultName   = $env:VAULT_NAME
 $McpClients  = $env:MCP_CLIENTS;  if (-not $McpClients)  { $McpClients = "both" }
@@ -60,11 +72,8 @@ if (Test-Path (Join-Path $VaultDir ".git")) {
   Say "Vault already exists at $VaultDir - reusing it."
 } else {
   New-Item -ItemType Directory -Force -Path $VaultParent | Out-Null
-  # Reject credentialed URLs before clone (same rule as persist_base_url / bash setup.sh)
-  # so failure leaves no half-built vault directory.
-  if ($BaseRepoUrl -match '(?i)^https?://[^/]*@') {
-    throw "BASE_REPO_URL must not embed credentials (https://user:token@…). Use a bare URL; authenticate via git credential helper or SSH."
-  }
+  # Credentialed URLs were already rejected at top level (before any clone or
+  # write), which also covers the reuse branch above.
   Say "Creating your vault at $VaultDir (from the base template)..."
   git clone --depth 1 $BaseRepoUrl $VaultDir
   Set-Location $VaultDir
@@ -88,6 +97,19 @@ if (Test-Path (Join-Path $VaultDir ".git")) {
   if ($LASTEXITCODE -ne 0) { git init -q; git symbolic-ref HEAD refs/heads/main }
   git config core.hooksPath .githooks
   $FreshVault = $true
+}
+# Half-build / reuse recovery, mirroring the same block in bash setup.sh. A run
+# interrupted after the clone but before the pin was written leaves a vault that
+# the branch above then treats as "already exists", so the fork pin would be
+# lost silently and update-base would fall back to the public template with no
+# error. Repair only when the pin is MISSING — never clear an existing one.
+$BaseUrlFile = Join-Path $VaultDir ".agents\.base-url"
+if ((-not (Test-Path $BaseUrlFile)) -or ((Get-Item $BaseUrlFile).Length -eq 0)) {
+  if ($BaseRepoUrl -and $BaseRepoUrl -ne $DefaultBaseRepoUrl) {
+    New-Item -ItemType Directory -Force -Path (Join-Path $VaultDir ".agents") | Out-Null
+    # UTF-8 no-BOM + trailing LF so bash resolve_base_url / update-base can read it.
+    [System.IO.File]::WriteAllText($BaseUrlFile, ($BaseRepoUrl + "`n"))
+  }
 }
 Set-Location $VaultDir
 

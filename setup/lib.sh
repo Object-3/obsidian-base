@@ -50,7 +50,19 @@ DEFAULT_BASE_REPO_URL="${DEFAULT_BASE_REPO_URL:-https://github.com/Object-3/obsi
 # scp-style SSH (git@host:path) and ssh://git@host/… are left alone — those are
 # auth forms, not embedded secrets. Tracked .agents/.base-url must never hold
 # HTTPS token/password userinfo.
-base_url_has_userinfo() { printf '%s' "$1" | grep -Eqi '^https?://[^/]*@'; }
+#
+# Two normalizations, both load-bearing:
+#   * trim leading/trailing whitespace PER LINE, so a copy-pasted leading space
+#     ("BASE_REPO_URL=' https://u:tok@host/r.git'") can't slip the `^` anchor;
+#   * test EVERY line, so a multi-line value can't hide userinfo on line 2.
+# Deliberately does NOT strip whitespace across the whole value: collapsing
+# newlines would splice lines together and push the `@` past the first `/`,
+# where `[^/]*@` can no longer see it — the exact bypass this guards.
+base_url_has_userinfo() {
+  printf '%s\n' "$1" \
+    | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+    | grep -Eqi '^https?://[^/]*@'
+}
 
 # Resolve which base URL this vault should fetch from. Optional repo-root arg
 # (defaults to cwd). Precedence matches update-base.sh's historical chain:
@@ -68,7 +80,13 @@ resolve_base_url() {
     printf 'https://github.com/%s.git\n' "$BASE_REPO"; return 0
   fi
   if [ -s "$root/.agents/.base-url" ]; then
-    url="$(tr -d '[:space:]' <"$root/.agents/.base-url")"
+    # First NON-BLANK line only. Reading the whole file and stripping every
+    # space would splice a second line onto the first, letting a credentialed
+    # line 2 hide from base_url_has_userinfo's `^https?://[^/]*@` anchor.
+    # `|| true` keeps an all-whitespace file falling through instead of
+    # tripping the caller's `set -e`.
+    url="$(grep -m1 -v '^[[:space:]]*$' "$root/.agents/.base-url" 2>/dev/null || true)"
+    url="$(printf '%s' "$url" | tr -d '[:space:]')"
     if [ -n "$url" ]; then
       # Fail closed on poisoned tracked file — never scrub and never hand a
       # credentialed URL to update-base (which echoes it). Env BASE_REPO_URL

@@ -118,3 +118,26 @@ if [ -z "${BASE_UPDATE:-}" ]; then
     fi
   fi
 fi
+
+# 4. Base-URL credential guard: .agents/.base-url is TRACKED, and README.md +
+# the update-base skill tell you to hand-write it to pin a fork. resolve_base_url
+# / persist_base_url reject a `user:token@` URL, but only when a script next
+# reads or writes the file — by then Obsidian Git's commit-and-sync has already
+# committed and pushed the token. This is the commit-time backstop, same shape
+# as guard 2: secrets must not reach tracked git. Matches base_url_has_userinfo
+# in setup/lib.sh — trim per line and test every line, so neither a pasted
+# leading space nor a credentialed second line slips the `^` anchor.
+if git diff --cached --name-only -z | tr '\0' '\n' | grep -qx '.agents/.base-url'; then
+  if git show :.agents/.base-url 2>/dev/null \
+       | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+       | grep -Eqi '^https?://[^/]*@'; then
+    echo "✋ commit blocked — .agents/.base-url contains embedded credentials:" >&2
+    echo "  a staged line matches https://user:token@…" >&2
+    echo "" >&2
+    echo ".agents/.base-url is tracked and gets pushed. Replace it with a bare URL (no" >&2
+    echo "user:token@) and authenticate with a git credential helper or SSH instead." >&2
+    echo "If the token was ever committed, REVOKE it — rewriting the file is not enough." >&2
+    echo "See AGENTS.md → the .agents/.base-url row in the Directory map." >&2
+    exit 1
+  fi
+fi
