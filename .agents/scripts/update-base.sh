@@ -29,9 +29,11 @@
 #   your notes, .agents/vault-profile.md, .agents/skill-sources.local.json, the VENDORED
 #   skills/agents (those come via sync-skills), your own hand-authored skills, index.md,
 #   log.md, hot.md, .agents/dream-state (per-vault backbone/state — overlaying the watermark
-#   would reset your dream progress; init-vault seeds them), llms.txt, README.md, docs/,
-#   plans/, raw/, and all of .obsidian/ EXCEPT the single base-owned snippet above (your own
-#   snippets, workspace, graph, appearance, and which snippets you've enabled all stay yours)
+#   would reset your dream progress; init-vault seeds them), .agents/.base-url and
+#   .agents/.base-ref (per-vault fork/pin — setup writes them; overlaying would repoint or
+#   unpin your base), llms.txt, README.md, docs/, plans/, raw/, and all of .obsidian/
+#   EXCEPT the single base-owned snippet above (your own snippets, workspace, graph,
+#   appearance, and which snippets you've enabled all stay yours)
 #
 # Config (override via env, or pin persistently in .agents/.base-{url,ref}):
 #   BASE_REPO=Object-3/obsidian-base                  # owner/name (GitHub shorthand)
@@ -46,21 +48,12 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"; cd "$ROOT"
 
-# Base repo URL precedence: BASE_REPO_URL env → BASE_REPO env (owner/name shorthand)
-# → persisted .agents/.base-url → an already-configured `base` remote (legacy vaults that
-# still keep a standing one) → public template. This is what lets a fork/custom base survive
-# now that the `base` remote is ephemeral rather than standing.
-if [ -n "${BASE_REPO_URL:-}" ]; then
-  :
-elif [ -n "${BASE_REPO:-}" ]; then
-  BASE_REPO_URL="https://github.com/${BASE_REPO}.git"
-elif [ -s .agents/.base-url ] && BASE_REPO_URL="$(tr -d '[:space:]' <.agents/.base-url)" && [ -n "$BASE_REPO_URL" ]; then
-  :   # persisted fork/custom base URL (a blank/whitespace-only file falls through)
-elif BASE_REPO_URL="$(git remote get-url base 2>/dev/null)" && [ -n "$BASE_REPO_URL" ]; then
-  :   # legacy vault with a standing `base` remote — honor its URL
-else
-  BASE_REPO_URL="https://github.com/Object-3/obsidian-base.git"
-fi
+# Shared default + precedence (BASE_REPO_URL env → BASE_REPO → .agents/.base-url →
+# legacy standing `base` remote → public default). Lives in setup/lib.sh so setup /
+# add-vault / update-base can't drift.
+# shellcheck disable=SC1091
+. "$ROOT/setup/lib.sh"
+BASE_REPO_URL="$(resolve_base_url "$ROOT")"
 BASE_REF="${BASE_REF:-$( [ -f .agents/.base-ref ] && tr -d '[:space:]' <.agents/.base-ref || echo main )}"
 
 command -v git >/dev/null || { echo "git is required" >&2; exit 1; }

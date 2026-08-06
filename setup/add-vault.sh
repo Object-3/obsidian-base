@@ -27,15 +27,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 . "$ROOT/setup/lib.sh"
 
 # ---- config (env-overridable) --------------------------------------------
-# Clone the SAME base your current vault tracks, so a new vault inherits whatever base
-# version you're on. The `base` git remote is no longer standing (see update-base.sh), so
-# read the persisted URL from .agents/.base-url; fall back to a legacy standing `base`
-# remote (older vaults), then the public base.
-BASE_REPO_URL="${BASE_REPO_URL:-$(
-  if [ -s "$ROOT/.agents/.base-url" ]; then tr -d '[:space:]' <"$ROOT/.agents/.base-url"
-  else git -C "$ROOT" remote get-url base 2>/dev/null || echo https://github.com/Object-3/obsidian-base.git
-  fi
-)}"
+# Clone the SAME base your current vault tracks (shared resolve_base_url precedence:
+# env → .agents/.base-url → legacy standing `base` remote → public default).
+BASE_REPO_URL="$(resolve_base_url "$ROOT")"
 # New vault lands beside the current one by default.
 VAULT_PARENT="${VAULT_PARENT:-$(dirname "$ROOT")}"
 VAULT_NAME="${VAULT_NAME:-}"                 # prompted if empty
@@ -72,20 +66,19 @@ LABEL="$(lib_mcp_label "$VAULT_NAME")"
 [ -e "$VAULT_DIR" ] && die "a folder already exists at $VAULT_DIR. Pick another name, or run setup.sh to re-provision it."
 
 mkdir -p "$VAULT_PARENT"
+# Reject credentialed URLs before clone (same rule as persist_base_url) so we don't
+# leave a half-built vault when the post-clone persist would die.
+if base_url_has_userinfo "$BASE_REPO_URL"; then
+  die "BASE_REPO_URL must not embed credentials (https://user:token@…). Use a bare URL; authenticate via git credential helper or SSH."
+fi
 say "Creating your new vault at $VAULT_DIR (from $BASE_REPO_URL)…"
 git clone --depth 1 "$BASE_REPO_URL" "$VAULT_DIR"
 cd "$VAULT_DIR"
 rm -rf .git                       # make it YOURS, not a clone of the base
-# No standing `base` git remote (see update-base.sh: it adds one ephemerally per fetch and
-# removes it, so `base` can't be mis-picked in Obsidian Git and push private notes to the
-# public template). Persist a NON-DEFAULT base URL so this vault's /update-base finds the
-# same fork/custom base; the public default needs nothing. Clear any .base-url the clone
-# source carried first, so the new vault's base is exactly what setup resolved — not a
-# stowaway inherited from the clone.
-rm -f .agents/.base-url
-if [ "$BASE_REPO_URL" != "https://github.com/Object-3/obsidian-base.git" ]; then
-  printf '%s\n' "$BASE_REPO_URL" > .agents/.base-url
-fi
+# No standing `base` git remote (see update-base.sh: it adds `base-ephemeral` per fetch
+# and removes it). Persist a NON-DEFAULT base URL via shared persist_base_url (rejects
+# credentials; clears any stowaway .base-url the clone source carried).
+persist_base_url "$BASE_REPO_URL" "$VAULT_DIR"
 git init -q -b main 2>/dev/null \
   || { git init -q && git symbolic-ref HEAD refs/heads/main; }   # explicit main; fall back for git < 2.28
 git config core.hooksPath .githooks 2>/dev/null || true

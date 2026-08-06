@@ -41,7 +41,7 @@ BASE="$SB/base"
 mkdir -p "$BASE/setup" "$BASE/.agents/scripts" "$BASE/.obsidian/plugins/obsidian-local-rest-api" "$BASE/.githooks"
 cp "$REPO/setup/lib.sh" "$BASE/setup/lib.sh"
 # Ship the REAL update-base.sh in the base so the created vault can run it below (asserting
-# the ephemeral `base` remote leaves nothing standing).
+# the ephemeral `base-ephemeral` remote leaves nothing standing).
 cp "$REPO/.agents/scripts/update-base.sh" "$BASE/.agents/scripts/update-base.sh"
 chmod +x "$BASE/.agents/scripts/update-base.sh"
 printf 'vault_name:  "{{VAULT_NAME}}"\n' > "$BASE/.agents/vault-profile.md"
@@ -98,8 +98,8 @@ chk "new vault personalized (name filled)"         "grep -q '\"Obsidian Puma\"' 
 # code (which committed before personalizing and ran a bare `git init`).
 chk "new vault is on branch 'main'"                "[ \"\$(git -C '$SB/obsidian-puma' rev-parse --abbrev-ref HEAD)\" = main ]"
 chk "first commit has real values (no {{ }} tokens)" "! git -C '$SB/obsidian-puma' show HEAD:.agents/vault-profile.md | grep -q '{{'"
-# The `base` remote is ephemeral now: a fresh vault carries NO standing `base` remote and
-# instead resolves its base URL from the persisted .agents/.base-url it inherited.
+# No standing `base` remote: a fresh vault resolves its base URL from the persisted
+# `.agents/.base-url` it inherited (`update-base` uses ephemeral `base-ephemeral` only).
 chk "new vault has NO standing base remote"        "! git -C '$SB/obsidian-puma' remote get-url base >/dev/null 2>&1"
 chk "new vault base URL persisted (.base-url)"     "grep -qF \"file://$BASE\" '$SB/obsidian-puma/.agents/.base-url'"
 

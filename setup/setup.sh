@@ -17,7 +17,13 @@
 set -euo pipefail
 
 # ---- config (env-overridable) --------------------------------------------
-BASE_REPO_URL="${BASE_REPO_URL:-https://github.com/Object-3/obsidian-base.git}"
+# Pre-clone default only — lib.sh isn't on disk yet for curl|bash installs, so
+# this one constant stands in for DEFAULT_BASE_REPO_URL until lib.sh is sourced
+# (after create_vault). Keep the string identical to DEFAULT_BASE_REPO_URL in
+# setup/lib.sh; setup/test-add-vault-smoke.sh asserts they match. Every other
+# use in this file references the constant, never a fourth copy of the literal.
+PRECLONE_DEFAULT_BASE_REPO_URL="https://github.com/Object-3/obsidian-base.git"
+BASE_REPO_URL="${BASE_REPO_URL:-$PRECLONE_DEFAULT_BASE_REPO_URL}"
 VAULT_PARENT="${VAULT_PARENT:-$HOME/Documents}"
 VAULT_NAME="${VAULT_NAME:-}"                 # prompted if empty
 MCP_CLIENTS="${MCP_CLIENTS:-all}"            # all | desktop | code | codex | both | none | "<space-separated client list>"
@@ -44,6 +50,20 @@ ask()  { # var prompt default
   read -r -p "$prompt${def:+ [$def]}: " val || true
   printf -v "$var" '%s' "${val:-$def}"
 }
+
+# Reject a credentialed BASE_REPO_URL ONCE, here, before anything clones or
+# writes. This has to be top-level rather than inside create_vault: create_vault
+# returns early when the vault already exists, so a check living there would
+# miss the reuse path — and the post-clone repair block further down still
+# writes $BASE_REPO_URL into the git-TRACKED .agents/.base-url, from where
+# configure_vault's `git add -A` would commit the token. One gate covers the
+# fresh clone, the reuse path, and the repair block. Mirrors
+# base_url_has_userinfo in setup/lib.sh, which isn't on disk yet here
+# (curl|bash); setup/test-add-vault-smoke.sh asserts the two patterns match.
+# Trim per line and test every line for the same reason lib.sh does.
+if printf '%s\n' "$BASE_REPO_URL" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -Eqi '^https?://[^/]*@'; then
+  die "BASE_REPO_URL must not embed credentials (https://user:token@…). Use a bare URL; authenticate via git credential helper or SSH."
+fi
 
 OS="$(uname -s)"
 case "$OS" in Darwin) PLATFORM=mac ;; Linux) PLATFORM=linux ;; *) die "unsupported OS: $OS (use setup.ps1 on Windows)";; esac
@@ -88,16 +108,20 @@ create_vault() {
   if [ -d "$VAULT_DIR/.git" ]; then say "Vault already exists at $VAULT_DIR — reusing it."; return; fi
   mkdir -p "$VAULT_PARENT"
   say "Creating your vault at $VAULT_DIR (from the base template)…"
+  # Credentialed URLs were already rejected at top level (before any clone or
+  # write), which also covers the reuse path this function returns early on.
   git clone --depth 1 "$BASE_REPO_URL" "$VAULT_DIR"
   cd "$VAULT_DIR"
   rm -rf .git                       # make it YOURS, not a clone of the base
-  # Deliberately NO standing `base` git remote: /update-base adds one ephemerally per fetch
-  # and removes it, so `base` can never be mis-picked in Obsidian Git's remote picker and
-  # push private notes into the (public) template. Persist a NON-DEFAULT base URL so
-  # /update-base still targets a fork/custom base; the public default needs nothing. Clear any
-  # .base-url the clone source carried first, so the base is exactly what setup resolved.
+  # Deliberately NO standing `base` git remote: /update-base adds a dedicated
+  # `base-ephemeral` remote per fetch and removes it, so nothing standing can be
+  # mis-picked in Obsidian Git's remote picker and push private notes into the
+  # (public) template. Clear any .base-url the clone source carried, then persist
+  # a NON-DEFAULT URL INLINE — curl|bash may clone a fork whose lib.sh predates
+  # persist_base_url; credentials were already rejected at top level.
   rm -f .agents/.base-url
-  if [ "$BASE_REPO_URL" != "https://github.com/Object-3/obsidian-base.git" ]; then
+  if [ -n "$BASE_REPO_URL" ] && [ "$BASE_REPO_URL" != "$PRECLONE_DEFAULT_BASE_REPO_URL" ]; then
+    mkdir -p .agents
     printf '%s\n' "$BASE_REPO_URL" > .agents/.base-url
   fi
   git init -q -b main 2>/dev/null \
@@ -200,6 +224,22 @@ create_vault
 # clones it — safe to source here for both piped (curl|bash) and local runs.
 # shellcheck disable=SC1091
 . "$VAULT_DIR/setup/lib.sh"
+# Fresh create already persisted inline (above). On reuse / half-build recovery:
+# if .base-url is missing and BASE_REPO_URL is non-default, repair via shared
+# helper when available. Never clear an existing pin on re-run.
+# Both branches write into a git-TRACKED file that configure_vault commits, so
+# both depend on the top-level credential gate having already run — the `elif`
+# is the path an older clone's lib.sh takes, and it has no persist_base_url to
+# validate for it.
+if [ ! -s "$VAULT_DIR/.agents/.base-url" ]; then
+  if declare -F persist_base_url >/dev/null 2>&1; then
+    persist_base_url "$BASE_REPO_URL" "$VAULT_DIR"
+  elif [ -n "$BASE_REPO_URL" ] && [ "$BASE_REPO_URL" != "$PRECLONE_DEFAULT_BASE_REPO_URL" ]; then
+    # Older clone lib without persist_base_url — same inline write as create_vault.
+    mkdir -p "$VAULT_DIR/.agents"
+    printf '%s\n' "$BASE_REPO_URL" > "$VAULT_DIR/.agents/.base-url"
+  fi
+fi
 configure_vault
 configure_skill_mirror
 provision_plugins

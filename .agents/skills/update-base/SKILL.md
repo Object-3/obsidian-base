@@ -6,8 +6,8 @@ description: Pull the latest base-layer improvements (skills engine, scripts, AG
 # Update from the base repo
 
 Bring this vault's shared base layer up to date with the upstream base. It's
-**git-native** (fetches via an **ephemeral** `base` git remote — added for the fetch, then
-removed, so no standing remote can be mis-picked in Obsidian Git; no tarballs), overlays
+**git-native** (fetches via an ephemeral `base-ephemeral` git remote — added for the fetch,
+then removed, so no standing remote can be mis-picked in Obsidian Git; no tarballs), overlays
 only base-owned engine paths, and prunes files the base removed. Your notes,
 `.agents/vault-profile.md`, and `.agents/skill-sources.local.json` are left untouched.
 
@@ -21,12 +21,17 @@ separate checkout, not the live auto-syncing vault). See "content vs engine" in 
    .agents/scripts/update-base.sh
    ```
    Override the source if needed: `BASE_REPO=owner/repo .agents/scripts/update-base.sh`,
-   or `BASE_REPO_URL=<any git url>` (a fork/custom base URL is remembered in
-   `.agents/.base-url`), or pin with `BASE_REF=v1.2.0` (or a `.agents/.base-ref` file).
-   It refreshes only base-owned engine files (`AGENTS.md`, `CLAUDE.md`,
-   `.gitignore`, `.gitattributes`, `.agents/SKILLS.md`, `.agents/skill-sources.json`,
-   `.agents/scripts/*`, `.claude/hooks/*`, `.claude/settings.json`), prunes removed
-   files, and reports what changed. Changes are left **staged**.
+   or `BASE_REPO_URL=<any git url>` (per-invocation only), or pin with `BASE_REF=v1.2.0`
+   (or a `.agents/.base-ref` file). It refreshes only base-owned engine files (`AGENTS.md`,
+   `CLAUDE.md`, `.gitignore`, `.gitattributes`, `.agents/SKILLS.md`,
+   `.agents/skill-sources.json`, `.agents/scripts/*`, `.claude/hooks/*`,
+   `.claude/settings.json`), prunes removed files, and reports what changed. Changes are
+   left **staged**.
+
+   **Point an existing vault at a fork permanently:** write the bare git URL (no
+   `user:token@` credentials — the file is tracked) to `.agents/.base-url`, then run
+   update-base. Env `BASE_REPO_URL=` overrides for one run only; the file is the
+   persistent primitive. To return to the public default, delete `.agents/.base-url`.
 
 2. **Re-sync skills** (the curated `skill-sources.json` may have changed):
    ```bash

@@ -65,16 +65,17 @@ Run the base updater (or say **"/update-base"** to an agent):
 .agents/scripts/sync-skills.sh    # refresh skills if the scripts changed
 ```
 
-It's **git-native**: it adds an **ephemeral** `base` git remote (removed again as soon as
+It's **git-native**: it adds an ephemeral `base-ephemeral` git remote (removed again as soon as
 the fetch is done, so nothing standing can be mis-picked in Obsidian Git and push private
 notes to the public template), fetches the wanted ref, and overlays only base-owned engine
 files (`AGENTS.md`, `CLAUDE.md`, scripts, hooks, `.gitignore`, `.gitattributes`,
 `.agents/SKILLS.md`, and the curated `.agents/skill-sources.json`). It prunes files the base
 removed and **never** touches your notes, `vault-profile.md`, or your
-`skill-sources.local.json`. Configure with `BASE_REPO=owner/repo`, `BASE_REPO_URL=<any git
-url>` (a fork/custom base URL is remembered in `.agents/.base-url`), or pin a tag/SHA with
-`BASE_REF=` (or a `.agents/.base-ref` file). Because it's an engine change, commit it on a
-branch and open a PR.
+`skill-sources.local.json`. Configure with `BASE_REPO=owner/repo` or `BASE_REPO_URL=<any
+git url>` for a **per-invocation** override; pin permanently by writing a bare URL (no
+`user:token@`) to `.agents/.base-url` (setup does this for non-default clones; update-base
+never overlays it), or pin a tag/SHA with `BASE_REF=` (or a `.agents/.base-ref` file).
+Because it's an engine change, commit it on a branch and open a PR.
 
 ## Customizing the skill set
 
