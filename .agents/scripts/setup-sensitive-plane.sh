@@ -271,18 +271,19 @@ RM
     c_ok "Untracked the old _sensitive/ placeholder files from git (notes were never tracked)."
   fi
   if inside_git; then
-    # Deliberately .git/info/exclude, NOT .gitignore: .gitignore is base-owned and
-    # gets wholesale-overlaid (checked out, no merge) by /update-base, so a line
-    # appended there is silently wiped on the next base pull. info/exclude lives
-    # inside .git/ — never tracked, never touched by any overlay of tracked
-    # files — so this survives every future /update-base run.
+    # Belt-and-suspenders: the BASE .gitignore now ships `/_sensitive` (+ a
+    # `!/_sensitive/` dir re-include), so up-to-date vaults ignore the bare symlink
+    # already. This git-local line covers vaults still on an older base .gitignore
+    # (pre-#60 fix) until their next /update-base. Harmless alongside the base rule:
+    # for real directories the tracked .gitignore's `!/_sensitive/` outranks
+    # info/exclude, so the placeholder re-includes keep working.
     local ex; ex="$(git -C "$VAULT_ROOT" rev-parse --git-path info/exclude 2>/dev/null)"
     if [ -n "$ex" ]; then
       mkdir -p "$(dirname "$ex")"
       [ -f "$ex" ] || : > "$ex"
       if ! grep -qxF "/_sensitive" "$ex"; then
-        printf '\n# Bare `_sensitive` symlink (cloud-backed Sensitive plane; see setup-sensitive-plane).\n# Lives here, not .gitignore, because .gitignore is base-owned and gets wholesale\n# overlaid by /update-base -- a line added there would be silently wiped on the\n# next base pull. This file is git-local and never touched by any overlay.\n/_sensitive\n' >> "$ex"
-        c_ok "Excluded /_sensitive via .git/info/exclude (survives future /update-base pulls)."
+        printf '\n# Bare `_sensitive` symlink (cloud-backed Sensitive plane; see setup-sensitive-plane).\n# Belt-and-suspenders: the base .gitignore covers this on current bases; this\n# git-local line protects vaults still on a pre-fix base .gitignore.\n/_sensitive\n' >> "$ex"
+        c_ok "Excluded /_sensitive via .git/info/exclude (backstop for older base .gitignore)."
       fi
     fi
   fi
@@ -328,10 +329,17 @@ import re, sys
 p = sys.argv[1]
 s = open(p, encoding="utf-8").read()
 # Remove the exact block `link` appends (leading blank line + comment + rule).
-block = "\n# Bare `_sensitive` symlink (cloud-backed Sensitive plane; see setup-sensitive-plane).\n# Lives here, not .gitignore, because .gitignore is base-owned and gets wholesale\n# overlaid by /update-base -- a line added there would be silently wiped on the\n# next base pull. This file is git-local and never touched by any overlay.\n/_sensitive\n"
-if block in s:
-    s = s.replace(block, "")
-else:
+# Two known shapes: the current text, and the pre-#60-fix text older links wrote.
+blocks = [
+    "\n# Bare `_sensitive` symlink (cloud-backed Sensitive plane; see setup-sensitive-plane).\n# Belt-and-suspenders: the base .gitignore covers this on current bases; this\n# git-local line protects vaults still on a pre-fix base .gitignore.\n/_sensitive\n",
+    "\n# Bare `_sensitive` symlink (cloud-backed Sensitive plane; see setup-sensitive-plane).\n# Lives here, not .gitignore, because .gitignore is base-owned and gets wholesale\n# overlaid by /update-base -- a line added there would be silently wiped on the\n# next base pull. This file is git-local and never touched by any overlay.\n/_sensitive\n",
+]
+matched = False
+for block in blocks:
+    if block in s:
+        s = s.replace(block, "")
+        matched = True
+if not matched:
     # Fallback: the comment was hand-edited — drop just the bare exclusion line.
     s = re.sub(r"(?m)^/_sensitive$\n?", "", s)
 open(p, "w", encoding="utf-8").write(s)
