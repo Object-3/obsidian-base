@@ -58,11 +58,28 @@ ask VISIBILITY "Visibility (private/public)" "private"
 # user's private notes, and once auto-sync turns on below, Obsidian Git would
 # keep merging the template into the vault. Drop that origin (and any base
 # tracking) so the create-your-own-repo path below runs instead; update-base
-# still reaches the base via its own ephemeral remote.
-if git remote get-url origin >/dev/null 2>&1 && lib_is_base_url "$(git remote get-url origin)" .; then
-  say "'origin' points at the PUBLIC base template ($(git remote get-url origin)) — removing it so your vault is never pushed there."
-  git branch --unset-upstream 2>/dev/null || true
-  git remote remove origin
+# still reaches the base via its own ephemeral remote. Base identity comes from
+# lib_base_url_kind (on-disk pinned state only — never env, never a remote's
+# name). A match on the .agents/.base-url fork pin could be the user's OWN
+# private fork serving as the backup, so that one is only removed on an
+# explicit yes; the public default is removed outright.
+if git remote get-url origin >/dev/null 2>&1 \
+   && origin_base_kind="$(lib_base_url_kind "$(git remote get-url origin)" .)"; then
+  drop_origin=""
+  if [ "$origin_base_kind" = default ]; then
+    say "'origin' points at the PUBLIC base template ($(git remote get-url origin)) — removing it so your vault is never pushed there."
+    drop_origin=1
+  else
+    ans=""
+    read -r -p "'origin' ($(git remote get-url origin)) matches your .agents/.base-url fork pin — it may be your own fork BACKUP. Remove it and create a fresh repo instead? [y/N]: " ans || true
+    case "$ans" in [Yy]*) drop_origin=1 ;; *) say "Keeping 'origin' as-is; it will be pushed to." ;; esac
+  fi
+  if [ -n "$drop_origin" ]; then
+    # Tolerant: errors only when no upstream is configured at all (and clears
+    # the config even when the remote-tracking ref was never fetched).
+    git branch --unset-upstream 2>/dev/null || true
+    git remote remove origin
+  fi
 fi
 if git remote get-url origin >/dev/null 2>&1; then
   say "An 'origin' already exists ($(git remote get-url origin)); pushing to it."

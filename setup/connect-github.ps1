@@ -39,29 +39,64 @@ function Push-WithRetry($remote, $branch) {
 }
 
 # Guard (issue #37): never push the private vault to the BASE template. Mirrors
-# connect-github.sh's lib_is_base_url check -- normalize both URLs (scheme,
-# userinfo, scp-style, trailing .git/slash, case) and compare against the public
-# default plus any fork pinned in .agents/.base-url.
+# connect-github.sh's lib_base_url_kind: identity from ON-DISK PINNED STATE only
+# (public default + .agents/.base-url) -- never env vars, never a remote's name.
+# Get-NormGitUrl mirrors lib_norm_git_url in setup/lib.sh: scheme, userinfo,
+# explicit port (ssh://host:22/...), scp-style with AND without a user, any
+# number of trailing slashes, .git, case, and ssh.github.com -> github.com.
 function Get-NormGitUrl($u) {
-  $u = ($u -replace '\s', '').ToLowerInvariant().TrimEnd('/')
+  $u = ($u -replace '\s', '').ToLowerInvariant()
+  $u = $u -replace '/+$', ''
   if ($u.EndsWith('.git')) { $u = $u.Substring(0, $u.Length - 4) }
+  $u = $u -replace '/+$', ''
   $u = $u -replace '^(ssh|git|https?)://', ''
-  if ($u -match '^[^/]*@([^/:]+):(.+)$') { $u = "$($Matches[1])/$($Matches[2])" }  # scp-style
-  elseif ($u -match '^[^/]*@(.+)$') { $u = $Matches[1] }                            # userinfo
+  # Userinfo: strip only an @ that occurs before the first slash (the authority).
+  $head = ($u -split '/', 2)[0]
+  if ($head -match '@') { $u = $u.Substring($u.IndexOf('@') + 1) }
+  # One colon can remain in the authority: an explicit port (host:22/path ->
+  # host/path) or scp-style (host:owner/repo -> host/owner/repo).
+  if ($u -match '^([^/:]+):(\d+)(/(.*))?$') {
+    $u = if ($Matches[4]) { "$($Matches[1])/$($Matches[4])" } else { $Matches[1] }
+  } elseif ($u -match '^([^/:]+):(.+)$') {
+    $u = "$($Matches[1])/$($Matches[2])"
+  }
+  if ($u -match '^ssh\.github\.com/(.*)$') { $u = "github.com/$($Matches[1])" }
   return $u
 }
-$baseUrls = @("https://github.com/Object-3/obsidian-base.git")  # mirrors DEFAULT_BASE_REPO_URL in setup/lib.sh
-$baseUrlFile = Join-Path $root ".agents\.base-url"
-if (Test-Path $baseUrlFile) {
-  $pinned = (Get-Content $baseUrlFile | Where-Object { $_.Trim() } | Select-Object -First 1)
-  if ($pinned) { $baseUrls += $pinned.Trim() }
+function Get-BaseUrlKind($url) {  # 'default' | 'pin' | $null
+  $n = Get-NormGitUrl $url
+  if (-not $n) { return $null }
+  # mirrors DEFAULT_BASE_REPO_URL in setup/lib.sh
+  if ($n -eq (Get-NormGitUrl "https://github.com/Object-3/obsidian-base.git")) { return 'default' }
+  $baseUrlFile = Join-Path $root ".agents\.base-url"
+  if (Test-Path $baseUrlFile) {
+    $pinned = (Get-Content $baseUrlFile | Where-Object { $_.Trim() } | Select-Object -First 1)
+    if ($pinned -and ($n -eq (Get-NormGitUrl $pinned.Trim()))) { return 'pin' }
+  }
+  return $null
 }
 $origin = (git remote get-url origin) 2>$null
-if ($origin -and (($baseUrls | ForEach-Object { Get-NormGitUrl $_ }) -contains (Get-NormGitUrl $origin))) {
-  Say "'origin' points at the PUBLIC base template ($origin) - removing it so your vault is never pushed there."
-  git branch --unset-upstream 2>$null
-  git remote remove origin
-  $origin = $null
+if ($origin) {
+  $kind = Get-BaseUrlKind $origin
+  $dropOrigin = $false
+  if ($kind -eq 'default') {
+    Say "'origin' points at the PUBLIC base template ($origin) - removing it so your vault is never pushed there."
+    $dropOrigin = $true
+  } elseif ($kind -eq 'pin') {
+    # Could be the user's own private fork serving as their backup -- ask first.
+    $ans = Read-Host "'origin' ($origin) matches your .agents/.base-url fork pin - it may be your own fork BACKUP. Remove it and create a fresh repo instead? [y/N]"
+    if ($ans -match '^[Yy]') { $dropOrigin = $true } else { Say "Keeping 'origin' as-is; it will be pushed to." }
+  }
+  if ($dropOrigin) {
+    # Relax EAP around the unset: under EAP=Stop on Windows PowerShell 5.1, a
+    # bare `git branch --unset-upstream 2>$null` with no upstream writes stderr
+    # and throws NativeCommandError, aborting BEFORE the remote removal.
+    $eap = $ErrorActionPreference; $ErrorActionPreference = 'SilentlyContinue'
+    git branch --unset-upstream *> $null
+    $ErrorActionPreference = $eap
+    git remote remove origin
+    $origin = $null
+  }
 }
 if ($origin) {
   Say "An 'origin' already exists ($origin); pushing to it."
