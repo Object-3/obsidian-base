@@ -21,6 +21,13 @@ installed globally; they only make sense inside a vault.
 - `~/.claude/skills/` — Claude Code (also the Claude Desktop **Code tab**, and Conductor, via shared `$HOME`)
 - `~/.agents/skills/` — OpenAI Codex's native user-scope
 
+**Where they do NOT go — say this out loud at completion, every time:** the mirror
+does **not** reach **Claude Desktop's regular chat window** (the same product as
+claude.ai chat). That surface has no folder-based skill loading; it takes skills only
+as a **manual per-skill zip upload** via **Settings → Capabilities**. A user who
+restarts Desktop expecting the mirrored skills in the chat window will be confused —
+head that off in your completion summary. For that surface, see step 4 (zip exports).
+
 **It is non-destructive and reversible-but-retained:** a skill *you* installed yourself
 is never overwritten, and offboarding the vault never removes these — once installed
 they're yours (see the `offboard` skill).
@@ -46,6 +53,11 @@ Report what changed: the script prints how many skills it mirrored and which it
 **skipped because they're the user's own**. Surface skips plainly — they're intentional,
 not errors.
 
+**At completion, state the reach prominently** (the script also prints it):
+- **Reaches:** Claude Code (CLI), Claude Desktop's **Code tab**, Conductor, Codex.
+- **Does NOT reach:** Claude Desktop's **regular chat window** — zip upload only
+  (Settings → Capabilities). Offer step 4 if the user wants skills there.
+
 ## 2. Status / drift check (offer-then-act — never auto-refresh)
 When the user asks "are my global skills current?", run the read-only status check. It
 compares the manifest's recorded content hash against the vault's current lock and flags
@@ -55,11 +67,16 @@ a cross-vault writer — without writing anything:
 .agents/scripts/sync-skills.sh --status
 ```
 Exit code: **0** up to date · **1** drift (this vault's portable set changed since the
-mirror was written) · **2** not installed yet. It also prints the owned count, when it
-was last written, and — if another vault wrote it last — a last-writer-wins note.
+mirror was written, **or** a recorded chat-surface zip export has gone stale) · **2**
+not installed yet. It also prints the owned count, when it was last written, and — if
+another vault wrote it last — a last-writer-wins note. If zip exports were ever
+recorded (step 4), it also diffs each against the current vendored content and lists
+stale ones as "re-export and re-upload: …".
 - If **up to date** (exit 0): say so; do nothing.
 - If **drift** (exit 1) or a **different-vault writer**: explain it, then **offer** to
   refresh (run step 1) — do not refresh without a yes.
+- If **stale zip exports** are flagged: offer to re-run the export (step 4) for that
+  surface; remind the user the re-upload into the app is manual.
 
 ## 3. Explain the model (so the user isn't surprised later)
 Tell them, briefly:
@@ -73,8 +90,33 @@ Tell them, briefly:
 - **Codex** reads `~/.agents/skills`; **Claude Code / Desktop Code tab / Conductor** read
   `~/.claude/skills`. (If a freshly installed personal skill doesn't *auto-trigger* in
   Claude Code, that's a known upstream quirk — it's still invocable by name.)
-- **Consumer chat** (claude.ai chat, ChatGPT) can't be scripted; if they want a skill
-  there, they upload its folder as a zip in that app's settings. Not something this skill does.
+- **Consumer chat** (claude.ai chat / Claude Desktop's chat window, ChatGPT) can't be
+  scripted — no folder loading, no upload API. If they want skills there, use the zip
+  exports in step 4: this skill generates the zips and tracks their staleness, but the
+  **upload itself stays manual** in that app's settings.
+
+## 4. Chat-surface zip exports (optional — Claude Desktop chat, etc.)
+
+When the user wants the skills in a **chat-only surface** (Claude Desktop's regular
+chat window today; any future zip-import app), generate per-skill zips and record
+them so staleness is visible later:
+
+```bash
+# Default surface is claude-desktop-chat; zips land under
+# ~/.config/obsidian-base/skill-exports/<surface>/ unless --export-dir= is given.
+.agents/scripts/sync-skills.sh --export-zips --surface=claude-desktop-chat
+```
+
+- Each export writes a manifest entry `{surface, skill, hash, written}` into the same
+  mirror manifest, keyed by a content hash of the vendored skill.
+- Tell the user the **upload is manual**: in Claude Desktop chat, Settings →
+  Capabilities → Skills, upload each zip. There is no API to automate this.
+- The loop closes via `--status` (step 2): when a vendored skill later changes
+  (`update-base`, `--user-scope` refresh), the status check flags exactly which
+  uploaded zips are stale — "re-export and re-upload: …" — instead of letting the
+  chat-surface copy silently fork from the vault.
+- The surface name is generic: a future zip-import app is just another
+  `--surface=<name>`, no redesign needed.
 
 ## Notes
 - Idempotent — safe to re-run. When stuck, prefer reading `.agents/scripts/sync-skills.sh`
@@ -85,7 +127,8 @@ Tell them, briefly:
   (`.agents/.base-url` if set, else `Object-3/obsidian-base`) with the error and your
   proposed fix in the body. See *Engine bugs & improvements found in a derived vault*
   in `AGENTS.md`.
-- The manifest (`{owned, lock_hash, vault_path, written}`) is the source of truth for
-  which copies are *ours* (safe to refresh) vs *yours* (never touched).
+- The manifest (`{owned, lock_hash, vault_path, written, exports}`) is the source of
+  truth for which copies are *ours* (safe to refresh) vs *yours* (never touched), and
+  — via `exports` — which skills were zip-exported for which chat surface.
 - This skill is hand-authored and repo-local (not vendored, not in the lock);
   `sync-skills.sh` won't overwrite it, and `update-base` propagates it to the fleet.

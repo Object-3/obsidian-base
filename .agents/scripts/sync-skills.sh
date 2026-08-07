@@ -49,11 +49,15 @@ LOCKDIR="$ROOT/.agents/.sync-skills.lock"   # concurrency guard (mkdir-based, po
 CLAUDE_USER_SKILLS="${CLAUDE_USER_SKILLS:-$HOME/.claude/skills}"   # Claude Code (also Desktop Code tab + Conductor via shared $HOME)
 CODEX_USER_SKILLS="${CODEX_USER_SKILLS:-$HOME/.agents/skills}"     # OpenAI Codex native user-scope
 MIRROR_MANIFEST="${MIRROR_MANIFEST:-${XDG_CONFIG_HOME:-$HOME/.config}/obsidian-base/skill-mirror.json}"
-USER_SCOPE=""; MIRROR_ONLY=""; STATUS_ONLY=""
+USER_SCOPE=""; MIRROR_ONLY=""; STATUS_ONLY=""; EXPORT_ZIPS=""
+EXPORT_SURFACE=""; EXPORT_DIR=""
 for _arg in "$@"; do case "$_arg" in
-  --user-scope)  USER_SCOPE=1 ;;
-  --mirror-only) USER_SCOPE=1; MIRROR_ONLY=1 ;;
-  --status)      STATUS_ONLY=1 ;;
+  --user-scope)   USER_SCOPE=1 ;;
+  --mirror-only)  USER_SCOPE=1; MIRROR_ONLY=1 ;;
+  --status)       STATUS_ONLY=1 ;;
+  --export-zips)  EXPORT_ZIPS=1 ;;
+  --surface=*)    EXPORT_SURFACE="${_arg#*=}" ;;
+  --export-dir=*) EXPORT_DIR="${_arg#*=}" ;;
 esac; done
 [ -n "${MIRROR_USER_SCOPE:-}" ] && USER_SCOPE=1
 
@@ -103,6 +107,24 @@ _reclaim_stale_lock() {
 }
 
 command -v jq   >/dev/null || { echo "jq is required"   >&2; exit 1; }
+
+# sha256 tool, portable (GNU coreutils vs macOS). Echoes the command; non-zero if none.
+_pick_hasher() {
+  if   command -v sha256sum >/dev/null 2>&1; then echo "sha256sum"
+  elif command -v shasum    >/dev/null 2>&1; then echo "shasum -a 256"
+  else return 1; fi
+}
+
+# Deterministic content hash of one skill dir (relative paths + file bytes), so a
+# zip-export entry can be diffed against the CURRENT vendored content later. Uses
+# $HASHER (set by the caller via _pick_hasher). Stable across machines: fixed sort
+# order, paths relative to the skill dir.
+_skill_hash() {
+  ( cd "$1" 2>/dev/null || exit 1
+    find . -type f | LC_ALL=C sort | while IFS= read -r f; do
+      printf '%s\n' "$f"; $HASHER < "$f"
+    done ) | $HASHER | cut -d' ' -f1
+}
 
 # Mirror the vendored PORTABLE set (the lock's .skills[]) into each CLI tool's
 # user-scope dir. Non-destructive: a same-named skill we did NOT install is never
@@ -212,6 +234,107 @@ mirror_user_scope() {
     rm -f "$MIRROR_MANIFEST.tmp.$$" 2>/dev/null; echo "   ! could not write manifest $MIRROR_MANIFEST" >&2
   fi
   echo "   mirrored ${#installed[@]} skill(s) into user-scope; $(jq 'length' <<<"$owned_now") owned total (manifest: $MIRROR_MANIFEST)"
+  echo "   reaches: Claude Code (CLI), Claude Desktop's CODE TAB, Conductor, Codex."
+  echo "   NOT reached: Claude Desktop's regular CHAT window — that surface takes skills"
+  echo "   only as manual zip uploads (Settings -> Capabilities). See: sync-skills.sh --export-zips"
+}
+
+# Generate per-skill zip exports for a CHAT surface (Claude Desktop's regular chat
+# window today; any future zip-import app as another --surface=<name>). These surfaces
+# have no folder/API ingest — the upload stays MANUAL — but we record a manifest entry
+# per export ({surface, skill, hash, written}) so --status can later diff it against
+# the current vendored content and flag stale zips instead of letting them silently
+# fork from the vault. Exports the same lock-tracked portable set the mirror uses.
+export_zips() {
+  [ -f "$LOCK" ] || { echo "no lock at $LOCK; run the sync once first" >&2; return 1; }
+  local hasher; hasher="$(_pick_hasher)" || { echo "no sha256sum/shasum; cannot record export hashes" >&2; return 1; }
+  HASHER="$hasher"
+  local surface="${EXPORT_SURFACE:-claude-desktop-chat}"
+  local outdir="${EXPORT_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/obsidian-base/skill-exports/$surface}"
+  mkdir -p "$outdir" "$(dirname "$MIRROR_MANIFEST")" 2>/dev/null \
+    || { echo "cannot create $outdir" >&2; return 1; }
+  if ! command -v zip >/dev/null 2>&1 && ! command -v python3 >/dev/null 2>&1; then
+    echo "need 'zip' or 'python3' to build zip exports" >&2; return 1
+  fi
+
+  echo ">> zip exports for chat surface '$surface'"
+  local n=0 name hash jsonl; jsonl="$(mktemp)"
+  while IFS= read -r name; do
+    [ -n "$name" ] && [ -d "$CANON_SKILLS/$name" ] || continue
+    rm -f "$outdir/$name.zip"
+    # Zip the FOLDER (entries prefixed "<name>/"), the shape the chat-surface skill
+    # upload expects — unzips to <name>/SKILL.md.
+    if command -v zip >/dev/null 2>&1; then
+      (cd "$CANON_SKILLS" && zip -qr "$outdir/$name.zip" "$name" -x '*.DS_Store') \
+        || { echo "   ! zip failed for $name" >&2; continue; }
+    else
+      python3 - "$CANON_SKILLS" "$name" "$outdir/$name.zip" <<'PY' || { echo "   ! zip failed for $name" >&2; continue; }
+import os, sys, zipfile
+root, name, out = sys.argv[1:4]
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+    for dp, _, fns in os.walk(os.path.join(root, name)):
+        for fn in sorted(fns):
+            if fn == ".DS_Store": continue
+            p = os.path.join(dp, fn)
+            z.write(p, os.path.relpath(p, root))
+PY
+    fi
+    hash="$(_skill_hash "$CANON_SKILLS/$name")" || hash=""
+    jq -n --arg surface "$surface" --arg skill "$name" --arg hash "$hash" \
+          --arg when "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+          '{surface:$surface, skill:$skill, hash:$hash, written:$when}' >> "$jsonl"
+    n=$((n+1)); echo "   zip: $name.zip"
+  done < <(jq -r '.skills[]?' "$LOCK")
+
+  # Merge into the mirror manifest: replace this run's (surface, skill) entries, keep
+  # everything else (other surfaces, the mirror's own fields). Atomic temp+mv, same
+  # rationale as the mirror write. A corrupt/missing manifest starts fresh at {}.
+  local new base
+  new="$(jq -s '.' "$jsonl")"; rm -f "$jsonl"
+  base="{}"
+  [ -f "$MIRROR_MANIFEST" ] && jq -e . "$MIRROR_MANIFEST" >/dev/null 2>&1 && base="$(cat "$MIRROR_MANIFEST")"
+  if printf '%s' "$base" | jq --argjson new "$new" \
+       '.exports = (((.exports // []) | map(select([.surface, .skill] as $k | ($new | map([.surface, .skill]) | index($k)) | not))) + $new)' \
+       > "$MIRROR_MANIFEST.tmp.$$" 2>/dev/null; then
+    mv "$MIRROR_MANIFEST.tmp.$$" "$MIRROR_MANIFEST" || { echo "   ! could not write manifest $MIRROR_MANIFEST" >&2; return 1; }
+  else
+    rm -f "$MIRROR_MANIFEST.tmp.$$" 2>/dev/null; echo "   ! could not write manifest $MIRROR_MANIFEST" >&2; return 1
+  fi
+  echo "   exported $n zip(s) -> $outdir"
+  echo "   NEXT (manual): upload each zip in the app itself — Claude Desktop chat:"
+  echo "   Settings -> Capabilities -> Skills. There is no upload API; this stays manual."
+  echo "   Later, 'sync-skills.sh --status' flags which uploaded zips have gone stale."
+}
+
+# Diff the recorded zip exports against the CURRENT vendored content. Prints per
+# surface; returns 0 clean (or nothing recorded), 1 if any export is stale. Called
+# from mirror_status. Caller must have a hasher available; sets $HASHER itself.
+zip_export_status() {
+  [ -f "$MIRROR_MANIFEST" ] || return 0
+  local count; count="$(jq '.exports // [] | length' "$MIRROR_MANIFEST" 2>/dev/null || echo 0)"
+  [ "$count" -gt 0 ] || return 0
+  local hasher; hasher="$(_pick_hasher)" || { echo "zip exports: no sha256sum/shasum; cannot check" >&2; return 0; }
+  HASHER="$hasher"
+  local rc=0 surface skill hash cur stale total
+  echo "zip exports (chat surfaces, manual upload):"
+  while IFS= read -r surface; do
+    [ -n "$surface" ] || continue
+    stale=""; total=0
+    while IFS=$'\t' read -r skill hash; do
+      [ -n "$skill" ] || continue
+      total=$((total+1))
+      cur=""; [ -d "$CANON_SKILLS/$skill" ] && cur="$(_skill_hash "$CANON_SKILLS/$skill")"
+      [ "$cur" = "$hash" ] || stale="$stale $skill"
+    done < <(jq -r --arg s "$surface" '.exports[]? | select(.surface==$s) | [.skill, .hash] | @tsv' "$MIRROR_MANIFEST")
+    if [ -n "$stale" ]; then
+      rc=1
+      echo "   ! $surface: stale zip-imported skill(s) — re-export and re-upload:$stale"
+      echo "     re-export: .agents/scripts/sync-skills.sh --export-zips --surface=$surface  (upload stays manual)"
+    else
+      echo "   $surface: $total export(s), all up to date with the vendored set"
+    fi
+  done < <(jq -r '.exports[]?.surface' "$MIRROR_MANIFEST" 2>/dev/null | sort -u)
+  return "$rc"
 }
 
 # Print user-scope mirror status (offline, read-only): how many skills, when written,
@@ -241,13 +364,19 @@ mirror_status() {
     echo "   ! last written from a DIFFERENT vault: $vault"
     echo "     (this vault: $ROOT — refreshing here makes this vault the owner; last-writer-wins)"
   fi
+  local rc=0
   if [ -n "$prev" ] && [ "$prev" = "$cur" ]; then
     echo "   up to date with this vault's portable set"
-    return 0
+  else
+    echo "   ! stale: this vault's portable set has changed since the mirror was written"
+    echo "     refresh with: .agents/scripts/sync-skills.sh --mirror-only   (or the /install-skills skill)"
+    rc=1
   fi
-  echo "   ! stale: this vault's portable set has changed since the mirror was written"
-  echo "     refresh with: .agents/scripts/sync-skills.sh --mirror-only   (or the /install-skills skill)"
-  return 1
+  # Also diff any recorded chat-surface zip exports (see export_zips) — a stale zip
+  # sitting in a chat app is otherwise invisible; surface it here with the same
+  # stale=1 exit semantics the mirror uses.
+  zip_export_status || rc=1
+  return "$rc"
 }
 
 # --mirror-only: refresh the user-scope mirror from the repo's CURRENT vendored set
@@ -257,6 +386,9 @@ if [ -n "$MIRROR_ONLY" ]; then mirror_user_scope; exit 0; fi
 # --status: read-only, offline drift check. Capture the rc so set -e doesn't abort on a
 # non-zero (stale/not-installed) status before we can propagate it as the exit code.
 if [ -n "$STATUS_ONLY" ]; then rc=0; mirror_status || rc=$?; exit "$rc"; fi
+# --export-zips: build per-skill zips for a chat surface from the committed lock —
+# offline, no repo lock needed (read-only on the repo; writes only zips + manifest).
+if [ -n "$EXPORT_ZIPS" ]; then rc=0; export_zips || rc=$?; exit "$rc"; fi
 
 command -v curl >/dev/null || { echo "curl is required" >&2; exit 1; }
 [ -f "$MANIFEST" ] || [ -f "$LOCAL_MANIFEST" ] || { echo "no skill-sources.json or skill-sources.local.json found" >&2; exit 1; }
@@ -318,15 +450,43 @@ fi
 
 VSKILLS=(); VAGENTS=(); FETCH_FAILURES=0
 UNRESOLVED_INCLUDES=()   # "<source>/<name>" for each `include` entry that matched nothing
+PIN_FALLBACKS=()         # "<source>: <pinned-ref> -> <used-ref>" when an explicit pin fell back
+SRC_LOCK_JSONL="$TMP/src-lock.jsonl"; : > "$SRC_LOCK_JSONL"   # per-source lock entries, one JSON object per line
 
-fetch() { # repo ref -> echoes extracted dir, or non-zero on failure
-  local repo="$1" ref="$2" dest="$TMP/${repo//\//_}__$ref"
+fetch() { # repo ref -> echoes extracted dir, or non-zero on failure.
+  # A ref may be a BRANCH, a TAG, or a COMMIT SHA — try all three tarball URL shapes
+  # in that order (refs/heads/<ref>, refs/tags/<ref>, then the bare /tar.gz/<ref>,
+  # which is what resolves a SHA). The old heads-only fetch made a tag/SHA pin fail
+  # here and silently fall back to main in the caller's retry loop — a pin that
+  # quietly unpinned itself. Leaves a best-effort commit SHA in <dir>.sha for the lock.
+  local repo="$1" ref="$2" dest="$TMP/${repo//\//_}__${ref//\//_}" url sha
   [ -d "$dest" ] && { printf '%s' "$dest"; return 0; }
-  mkdir -p "$dest"
-  if curl -fsSL "https://codeload.github.com/$repo/tar.gz/refs/heads/$ref" -o "$TMP/a.tgz" \
-     && tar -xzf "$TMP/a.tgz" -C "$dest" --strip-components=1 2>/dev/null; then
-    printf '%s' "$dest"; return 0
-  fi
+  for url in \
+    "https://codeload.github.com/$repo/tar.gz/refs/heads/$ref" \
+    "https://codeload.github.com/$repo/tar.gz/refs/tags/$ref" \
+    "https://codeload.github.com/$repo/tar.gz/$ref"; do
+    rm -rf "$dest"; mkdir -p "$dest"
+    if curl -fsSL -D "$dest.hdr" "$url" -o "$TMP/a.tgz" \
+       && tar -xzf "$TMP/a.tgz" -C "$dest" --strip-components=1 2>/dev/null; then
+      # Best-effort commit-SHA resolution (empty is allowed; the caller notes it):
+      #   1. a 40-hex ref IS the commit;
+      #   2. `git ls-remote` on the branch/tag ref (authoritative, when git exists);
+      #   3. codeload's ETag header, which carries the commit SHA for ref tarballs.
+      sha=""
+      case "$ref" in
+        *[!0-9a-f]*) ;;
+        ????????????????????????????????????????) sha="$ref" ;;
+      esac
+      if [ -z "$sha" ] && command -v git >/dev/null 2>&1; then
+        sha="$(git ls-remote "https://github.com/$repo" "refs/heads/$ref" "refs/tags/$ref" 2>/dev/null | awk 'NR==1{print $1}')" || sha=""
+      fi
+      if [ -z "$sha" ] && [ -f "$dest.hdr" ]; then
+        sha="$(grep -i '^etag:' "$dest.hdr" 2>/dev/null | grep -oE '[0-9a-f]{40}' | head -n 1)" || sha=""
+      fi
+      printf '%s' "$sha" > "$dest.sha"
+      printf '%s' "$dest"; return 0
+    fi
+  done
   rm -rf "$dest"; return 1
 }
 
@@ -343,11 +503,28 @@ for i in $(seq 0 $((count - 1))); do
   echo ">> $name  ($repo @ $ref)"
   produced=0   # skills+agents this source contributed; 0 => failed/misconfigured source
 
-  src=""
+  src=""; used_ref=""
   for r in "$ref" main master; do
-    if src=$(fetch "$repo" "$r"); then break; else src=""; fi
+    if src=$(fetch "$repo" "$r"); then used_ref="$r"; break; else src=""; fi
   done
-  [ -z "$src" ] && { echo "   ! download failed; keeping last-good copy for $name"; FETCH_FAILURES=$((FETCH_FAILURES+1)); continue; }
+  if [ -z "$src" ]; then
+    echo "   ! download failed; keeping last-good copy for $name"
+    FETCH_FAILURES=$((FETCH_FAILURES+1))
+    # Carry the previous lock's provenance entry forward: the on-disk content is still
+    # the last-good fetch, so its recorded {ref, fetched_sha} stays the truth.
+    { [ -f "$LOCK" ] && jq -c --arg n "$name" '.sources[]? | select(.name==$n)' "$LOCK" >> "$SRC_LOCK_JSONL" 2>/dev/null; } || true
+    continue
+  fi
+  # An EXPLICITLY-pinned ref that fell back to main/master is a pin that is NOT in
+  # effect — never silence it. (A source with no `ref` defaults to main; its quiet
+  # main->master fallback stays quiet, as before.)
+  explicit_ref="$(jq -r ".sources[$i].ref // empty" "$MANIFEST")"
+  if [ -n "$explicit_ref" ] && [ "$used_ref" != "$ref" ]; then
+    echo "   !! PIN FALLBACK: '$name' is pinned to '$ref' but that ref could not be fetched from $repo — fell back to '$used_ref'. The pin is NOT in effect; fix the ref in .agents/skill-sources.json (or skill-sources.local.json)." >&2
+    PIN_FALLBACKS+=("$name: $ref -> $used_ref")
+  fi
+  fetched_sha="$(cat "$src.sha" 2>/dev/null)" || fetched_sha=""
+  [ -z "$fetched_sha" ] && echo "   note: could not resolve a commit SHA for $name@$used_ref (lock records it empty)"
 
   if [ -d "$src/$spath" ]; then
     while IFS= read -r skfile; do
@@ -400,6 +577,14 @@ for i in $(seq 0 $((count - 1))); do
   if [ "$produced" -eq 0 ]; then
     echo "   ! $name yielded no skills/agents; keeping last-good copy"
     FETCH_FAILURES=$((FETCH_FAILURES+1))
+    # Last-good content stayed on disk, so carry the old provenance entry (if any).
+    { [ -f "$LOCK" ] && jq -c --arg n "$name" '.sources[]? | select(.name==$n)' "$LOCK" >> "$SRC_LOCK_JSONL" 2>/dev/null; } || true
+  else
+    # Record what was ACTUALLY vendored: the ref that resolved (== the pin on a clean
+    # run) plus the best-effort commit SHA — so "which upstream commit is this vault
+    # running" is answerable and drift is diffable.
+    jq -n --arg name "$name" --arg repo "$repo" --arg ref "$used_ref" --arg sha "$fetched_sha" \
+          '{name:$name, repo:$repo, ref:$ref, fetched_sha:$sha}' >> "$SRC_LOCK_JSONL"
   fi
 done
 
@@ -571,10 +756,19 @@ if [ -z "$TOTAL_FAILURE" ]; then
   for f in "${OLD_AGENTS[@]:-}"; do
     if [ -n "$f" ] && [ -f "$CANON_AGENTS/$f" ]; then LOCK_AGENTS+=("$f"); fi
   done
+  # Enriched schema: alongside the flat name arrays (which every reader keys on with
+  # `.skills[]?` / `.agents[]?`, so a legacy names-only lock stays readable and the
+  # first sync after the upgrade rewrites it in this schema), record per-source
+  # provenance {name, repo, ref, fetched_sha} gathered during the fetch loop.
+  SOURCES_LOCK="[]"
+  if [ -s "$SRC_LOCK_JSONL" ]; then
+    SOURCES_LOCK="$(jq -s 'unique_by(.name)' "$SRC_LOCK_JSONL" 2>/dev/null)" || SOURCES_LOCK="[]"
+  fi
   jq -n \
     --argjson s "$(to_json_array "${LOCK_SKILLS[@]:-}")" \
     --argjson a "$(to_json_array "${LOCK_AGENTS[@]:-}")" \
-    '{skills: $s, agents: $a}' > "$LOCK"
+    --argjson src "$SOURCES_LOCK" \
+    '{skills: $s, agents: $a, sources: $src}' > "$LOCK"
   date -u +"%Y-%m-%dT%H:%M:%SZ" > "$STAMP"
 fi
 
@@ -589,6 +783,16 @@ if [ -n "$TOTAL_FAILURE" ]; then
   echo "sync: nothing vendored — kept last-good skills, lock, INDEX & stamp; refreshed pointers (self-heals next run)"
 else
   echo "synced ${#VSKILLS[@]} skills, ${#VAGENTS[@]} agents (canonical: .agents/)"
+fi
+
+# Repeat pin fallbacks at the very end, same rationale as the unresolved-include
+# summary below: a pin that is silently not in effect is exactly the failure mode
+# tag/SHA pinning exists to prevent. Non-fatal — the sync itself succeeded.
+if [ "${#PIN_FALLBACKS[@]}" -gt 0 ]; then
+  echo "sync: ${#PIN_FALLBACKS[@]} PINNED source(s) fell back to an unpinned branch this run:" >&2
+  for p in "${PIN_FALLBACKS[@]}"; do echo "  - $p" >&2; done
+  echo "  These pins are NOT in effect. Fix each ref in .agents/skill-sources.json (or" >&2
+  echo "  skill-sources.local.json) — a branch, tag, or full commit SHA all work." >&2
 fi
 
 # Repeat unresolved includes at the very end: the per-source warning scrolls away behind

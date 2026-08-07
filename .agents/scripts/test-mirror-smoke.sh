@@ -23,6 +23,8 @@
 #   5. --status exit codes (0 up-to-date / 1 stale / 2 not-installed)
 #   6. --mirror-only works with no network
 #   7. no staging artifacts leak into the scanned skills root (stages live in the parent)
+#   8. --export-zips builds zips offline and records a manifest entry per export
+#   9. --status diffs the export manifest and flags stale zip-imported skills
 #
 # Exits non-zero if any assertion fails.
 set -uo pipefail
@@ -102,6 +104,27 @@ done
 [ "$root_junk" -eq 0 ] && ok "no temp/stage dirs in skills root after run" || bad "staging leaked into skills root"
 par_junk=$(find "$WORK" -maxdepth 1 -name '.skill-mirror-stage.*' 2>/dev/null | wc -l | tr -d ' ')
 [ "$par_junk" = "0" ] && ok "parent stages swept clean" || bad "stage orphans left in parent dir"
+
+echo "== 8: --export-zips builds zips offline + records a manifest entry per export =="
+# The mock-curl PATH stays irrelevant: exports read only the committed lock + skills.
+EXPORTS="$WORK/exports"
+bash "$SYNC" --export-zips "--surface=test-chat" "--export-dir=$EXPORTS" >/dev/null 2>&1
+[ -f "$EXPORTS/$OWN_SKILL.zip" ] && ok "zip written for '$OWN_SKILL'" || bad "no zip for '$OWN_SKILL'"
+jq -e --arg k "$OWN_SKILL" \
+   '.exports[]? | select(.surface=="test-chat" and .skill==$k) | (.hash | length) > 0 and has("written")' \
+   "$MIRROR_MANIFEST" >/dev/null 2>&1 \
+  && ok "manifest export entry {surface,skill,hash,written} recorded" || bad "export entry missing/incomplete"
+jq -e 'has("owned") and has("lock_hash")' "$MIRROR_MANIFEST" >/dev/null 2>&1 \
+  && ok "mirror fields survive the export write" || bad "export write clobbered the mirror manifest"
+
+echo "== 9: --status flags stale zip exports (re-export and re-upload) =="
+bash "$SYNC" --status >/dev/null 2>&1 && ok "status 0 while exports match" || bad "status not 0 while exports match"
+jq --arg k "$OWN_SKILL" '(.exports[] | select(.skill==$k)).hash = "deadbeef"' \
+   "$MIRROR_MANIFEST" > "$MIRROR_MANIFEST.x" && mv "$MIRROR_MANIFEST.x" "$MIRROR_MANIFEST"
+out="$(bash "$SYNC" --status 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && ok "status 1 on stale export" || bad "status not 1 on stale export (rc=$rc)"
+printf '%s' "$out" | grep -q "re-export and re-upload:.*$OWN_SKILL" \
+  && ok "stale skill named with re-export instruction" || bad "no re-export/re-upload flag for stale skill"
 
 echo
 echo "smoke: $pass passed, $fail failed"

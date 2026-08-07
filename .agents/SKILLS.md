@@ -125,8 +125,13 @@ untouched.
   `personal > project`); across multiple vaults the mirror is last-writer-wins, which
   the `/install-skills` status check (`sync-skills.sh --status`) flags via the manifest's
   recorded source hash + vault path.
-- **Not for chat surfaces:** claude.ai chat takes skills only as a manual zip upload;
-  ChatGPT has none. The mirror targets the scriptable CLI tools only.
+- **Not for chat surfaces:** claude.ai chat — including **Claude Desktop's regular
+  chat window** (the Code tab IS reached, the chat window is NOT) — takes skills only
+  as a manual zip upload (Settings → Capabilities); ChatGPT has none. The mirror
+  targets the scriptable CLI tools only. For chat surfaces,
+  `sync-skills.sh --export-zips --surface=<name>` builds the zips and records each
+  export in the mirror manifest, and `--status` later flags which uploaded zips have
+  gone stale ("re-export and re-upload: …") — the upload itself stays manual.
 
 See [`docs/knowledge/userscope-skill-mirror.md`](../docs/knowledge/userscope-skill-mirror.md).
 
