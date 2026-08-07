@@ -18,7 +18,8 @@ Built-in / official cloud-native skills are left alone.
 ├── scripts/sync-skills.sh    the sync script
 ├── skill-sources.json        BASE-OWNED curated sources (refreshed by update-base)
 ├── skill-sources.local.json  THIS VAULT'S extra sources (never synced; optional)
-└── skill-sources.lock.json   bookkeeping for clean re-sync
+└── skill-sources.lock.json   vendored-set record + per-source provenance:
+                              {skills, agents, sources:[{name,repo,ref,ref_type,fetched_sha}]}
 .claude/skills  -> ../.agents/skills    (pointer for Claude Code)
 .codex/skills   -> ../.agents/skills    (pointer for OpenAI Codex)
 .claude/agents  -> ../.agents/agents
@@ -48,7 +49,13 @@ local entries winning on a name collision (so you can override a base source).
    ```
    - `skillsPath` — directory in the repo under which each `*/SKILL.md` lives (default `skills`).
    - `include` — optional allow-list of skill directory names (cherry-pick across nested folders).
-   - `agentsPath` / `ref` — optional (`*.md` agents; branch defaults to `main`→`master`).
+   - `agentsPath` — optional (`*.md` agents).
+   - `ref` — optional **pin**: a branch, a **tag**, or a full **commit SHA** all work
+     (tags are tried before same-named branches, matching git's refname precedence; a
+     40-hex ref fetches the commit directly). Unset defaults to `main`→`master`. If an
+     explicitly-pinned ref can't be fetched, the sync falls back to `main`/`master`
+     with a loud **PIN FALLBACK** warning and records a `fallback_from` breadcrumb in
+     the lock, which `sync-skills.sh --status` surfaces — a pin never silently unpins.
 2. Run `.agents/scripts/sync-skills.sh`.
 3. Commit the changes under `.agents/` (and the pointer dirs).
 

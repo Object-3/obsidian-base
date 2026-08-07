@@ -76,7 +76,12 @@ stale ones as "re-export and re-upload: …".
 - If **drift** (exit 1) or a **different-vault writer**: explain it, then **offer** to
   refresh (run step 1) — do not refresh without a yes.
 - If **stale zip exports** are flagged: offer to re-run the export (step 4) for that
-  surface; remind the user the re-upload into the app is manual.
+  surface; remind the user the re-upload into the app is manual. A skill flagged
+  "no longer vendored" is different: the fix is deleting the uploaded zip in the app
+  (the manifest entry clears itself on the next export).
+- The check also surfaces any **pinned skill source that fell back** to an unpinned
+  branch on the last sync (recorded in the lock's `fallback_from`); the fix is
+  correcting the `ref` in `.agents/skill-sources.json` and re-running the sync.
 
 ## 3. Explain the model (so the user isn't surprised later)
 Tell them, briefly:
