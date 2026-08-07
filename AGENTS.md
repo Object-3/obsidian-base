@@ -43,6 +43,17 @@ related:                                 # optional, list of links
   `Recommendations` → `Caveats`.
 - **Voice:** research-backed and decisive. Cite sources with dates. Separate
   *verified facts* from *speculation/prediction*. Flag assumptions and caveats.
+- **Provenance survives propagation.** A claim's epistemic status travels with the
+  claim. When a sourced figure becomes a premise in later work — a downstream note,
+  a sub-agent brief, an estimate, a summary — restate *who said it and why they
+  said it*, not just the number. If a claim can't be restated with its source
+  attached, it isn't ready to be built on. (`confidence:` on a derived note should
+  reflect the *weakest* link in the chain, not the polish of the final synthesis.)
+- **Weight sources by interest, not just by date.** Record who benefits if a claim
+  is believed, and in which direction the bias runs. A figure from a party with a
+  stake in the reader's conclusion is a **claim**, not a finding, however precisely
+  it is stated. Prefer "X states…" over "X is…" until independently verified, and
+  say plainly when verification hasn't happened.
 - **Spell out acronyms — don't assume the reader knows them.** Expand every
   acronym, abbreviation, or initialism on **first use** in a note: write the full
   term with the short form in parentheses after it — e.g. "conversion rate
@@ -81,6 +92,12 @@ Title-Case-with-spaces filename is a latent bug.
   `aliases:` bridge so existing `[[links]]` keep resolving + `index.md`/`log.md` fixups).
   Reserved backbone/engine files (`index.md`, `log.md`, `hot.md`, `AGENTS.md`,
   `README.md`, …) keep their fixed names — they're exempt.
+- **Known race — 0-byte stubs after a rename merges.** When a rename/move PR merges
+  while an Obsidian client is open on the live vault, Obsidian can leave a **0-byte
+  stub at the OLD path**. It's a harmless working-tree artifact of the
+  Obsidian-open-during-git-sync race, not data loss — the renamed note is intact in
+  git with full content. Detector: an *empty* `.md` file at an old/renamed path
+  (`find . -name '*.md' -empty` on the live vault). Fix: delete the stub.
 
 ## Directory map (where things live)
 
@@ -159,6 +176,19 @@ three buckets — **Shareable → Sensitive → Original**, in rising order of s
   MCP lands them where they're indexed and gitignored. Tag `classification:
   confidential-local-only`.
 - **Original** → Google Drive (shareable / automatable) or `_sensitive/`. Never committed.
+
+**"Third-party material" means parties to the confidential matter** — counterparties,
+their owners, their advisors, and anyone whose information reached you under a duty of
+confidence. It does **not** mean every entity that isn't you. **Never anonymize:**
+software and service vendors, their products, and their published pricing and contract
+terms; published research, its authors and institutions; regulators, statutes, and case
+citations; public-company comparables and their filings. All of that is public,
+independently verifiable, and **load-bearing** — a vendor shortlist without names, or a
+contract red flag without a vendor attached, can't be acted on and forces the next
+reader to re-derive the work. Over-redaction is not the safe default: it degrades the
+note invisibly (the prose still reads fine, so review doesn't catch it). If withholding
+a name would make a recommendation unusable, and the name carries no duty of
+confidence, **use the name.**
 
 **Keep links intact across planes** with one rule: *links point up the sensitivity
 gradient (shareable → sensitive → original) freely; references down are optional, labeled,

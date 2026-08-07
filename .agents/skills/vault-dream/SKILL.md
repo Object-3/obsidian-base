@@ -139,8 +139,13 @@ step); this phase is the semantic layer on top.
 - **Refresh `hot.md`** (create it if absent) — the ~500-word recent-context cache agents
   read first: distill this run's additions, decisions, and open threads. Keep it short; it
   is a cache, not an archive.
-- **Roll up / archive stale `log.md` entries** so the append-only log doesn't grow
-  unbounded (summarize old runs into a rolled-up block), then append this run's line:
+- **Roll up stale `log.md` entries** so the append-only log doesn't grow unbounded.
+  **Default policy:** once `log.md` exceeds ~300 lines, roll up entries **older than
+  90 days** by collapsing each rolled-up month into a **single summary line in place**
+  (e.g. `## [YYYY-MM] rolled up | N entries: <one-line gist>`). If the vault's
+  maintainer has set a different rollup policy in `.agents/vault-profile.md`, honor
+  that instead. When in doubt — or on the **first** rollup in a vault — propose the
+  rollup and confirm with the user before applying it. Then append this run's line:
   `## [YYYY-MM-DD] dream | <one-line summary of the changeset>`.
 - **Bump `.agents/dream-state`** to now — `date -u +%Y-%m-%dT%H:%M:%SZ` (the exact form the
   reader parses; see the seeding note in Phase 1) — *as part of this changeset*, so the
