@@ -53,7 +53,9 @@ related:                                 # optional, list of links
   is believed, and in which direction the bias runs. A figure from a party with a
   stake in the reader's conclusion is a **claim**, not a finding, however precisely
   it is stated. Prefer "X states…" over "X is…" until independently verified, and
-  say plainly when verification hasn't happened.
+  say plainly when verification hasn't happened. This hedging applies to **source
+  attribution**, not to the note's own analysis — conclusions and recommendations
+  stay decisive; what gets hedged is who-said-what and unverified claims.
 - **Spell out acronyms — don't assume the reader knows them.** Expand every
   acronym, abbreviation, or initialism on **first use** in a note: write the full
   term with the short form in parentheses after it — e.g. "conversion rate
