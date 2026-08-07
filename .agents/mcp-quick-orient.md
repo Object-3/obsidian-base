@@ -24,7 +24,14 @@ dot-folders don't show up in `obsidian_list_files_in_vault`'s listing, but ARE
 fetchable directly by path, so don't list first). If it resolves with
 `vault_name`/`primary_tag` frontmatter, the vault is obsidian-base-derived — read the
 needed fact off it, and everything below already applies too. If the fetch fails,
-this isn't one of these vaults — fall back to normal exploration.
+this usually isn't one of these vaults — fall back to normal exploration. One known
+false negative: an obsidian-base-derived vault whose `.obsidian/app.json` still lists
+`.agents/` under `userIgnoreFilters` (an old template default) returns "File not
+found" here, because the Local REST API honors that setting even for direct-path
+reads. If other signals say the vault IS obsidian-base-derived (e.g. `index.md` /
+`docs/knowledge/` match the recap below), tell the user to remove the `.agents/`,
+`.claude/`, `.codex/`, and `log.md` entries from Settings → Files and links →
+Excluded files (dot-folders stay out of graph/search natively) and retry.
 
 That one fetch is usually the ONLY MCP call orientation ever needs — the rest of the
 structure is identical across every obsidian-base fork, so it doesn't need
