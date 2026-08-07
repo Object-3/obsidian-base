@@ -46,10 +46,13 @@
 #      ~/.claude/projects/<slug> directory to scan (explicit override; no fallback, no
 #      content filter — you told us where the sessions are).
 #   2. Otherwise the vault root's slug is scanned; if that directory is MISSING or holds
-#      no *.jsonl transcripts, the scan FALLS BACK to ancestor-directory slugs (parent
-#      upward, bounded to 3 levels or $HOME, whichever comes first), counting ONLY
-#      transcripts whose content references this vault's path — so sessions from sibling
-#      vaults under the same parent are never miscounted.
+#      no *.jsonl transcripts NEWER than the watermark (a stale pre-watermark transcript
+#      must not suppress the fallback — that would recreate the silent-0 bug), the scan
+#      FALLS BACK to ancestor-directory slugs (parent upward, bounded to 3 levels or
+#      $HOME, whichever comes first), counting ONLY transcripts whose content references
+#      this vault's path — matched with a path boundary (…/vault never matches
+#      …/vault-fork) and against both the logical and physical (symlink-resolved) root —
+#      so sessions from sibling vaults under the same parent are never miscounted.
 # --doctor reports how the slugs resolved and how many transcripts each directory holds,
 # distinguishing "0 new sessions" (healthy) from "expected session directory not found /
 # empty and no fallback transcripts reference this vault" (broken wiring — exit 3). The
@@ -174,6 +177,27 @@ mtime_epoch() {
 # matching how Claude Code names ~/.claude/projects/<slug>.
 path_to_slug() { printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g'; }
 
+# Escape a string for use inside a grep -E (ERE) pattern.
+ere_escape() { printf '%s' "$1" | sed 's/[][\.|$(){}?+*^\\]/\\&/g'; }
+
+# The content-filter pattern for fallback transcripts: the vault root path followed by a
+# PATH BOUNDARY (any char that couldn't extend the last path component, or end-of-line) —
+# a raw substring match would let …/vault also claim …/vault-fork's sessions. Matched
+# against both the logical root and its physical (symlink-resolved) form, since transcripts
+# may record either (e.g. macOS /tmp vs /private/tmp).
+VROOT_BOUND='([^A-Za-z0-9_.~-]|$)'
+VROOT_PAT="$(ere_escape "$VROOT")$VROOT_BOUND"
+VROOT_REAL=$(cd "$VROOT" 2>/dev/null && pwd -P || printf '%s' "$VROOT")
+if [ -n "$VROOT_REAL" ] && [ "$VROOT_REAL" != "$VROOT" ]; then
+  VROOT_PAT="$VROOT_PAT|$(ere_escape "$VROOT_REAL")$VROOT_BOUND"
+fi
+
+# Resolve the watermark string early (the fallback gate below compares against it):
+# explicit --since wins, else line 1 of the state file.
+watermark_str="$SINCE"
+if [ -z "$watermark_str" ] && [ -f "$STATE" ]; then watermark_str=$(head -n1 "$STATE"); fi
+watermark_epoch=$(iso_to_epoch "$watermark_str")
+
 # Resolve the scope: explicit flag > vault-profile key > this-checkout default.
 if [ -z "$SCOPE" ] && [ -f "$PROFILE" ]; then
   SCOPE=$(sed -n 's/^dream_session_scope:[[:space:]]*//p' "$PROFILE" | head -n1 \
@@ -216,10 +240,19 @@ elif [ -n "$SLUG_OVERRIDE" ]; then
   slugs="$SLUG_OVERRIDE"
 else
   slugs="$primary_slug"
-  # Ancestor fallback: when the exact-root slug dir is missing OR holds no transcripts,
-  # Claude Code was likely launched from an ancestor directory (multi-vault / parent-dir
-  # layout) — walk parents, bounded to 3 levels or $HOME, whichever comes first.
-  if ! find "$PROJECTS_DIR/$primary_slug" -maxdepth 1 -type f -name '*.jsonl' 2>/dev/null | grep -q .; then
+  # Ancestor fallback: when the exact-root slug dir is missing OR holds no transcripts
+  # NEWER than the watermark, Claude Code was likely launched from an ancestor directory
+  # (multi-vault / parent-dir layout) — walk parents, bounded to 3 levels or $HOME,
+  # whichever comes first. Gating on watermark-new (not mere presence) matters: one stale
+  # pre-watermark transcript in the exact dir must not suppress the fallback forever —
+  # that would recreate the silent-0 bug. The content filter + slug dedup below keep the
+  # fallback from ever double- or mis-counting.
+  exact_new=0
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    [ "$(mtime_epoch "$f")" -gt "$watermark_epoch" ] && exact_new=$((exact_new + 1))
+  done < <(find "$PROJECTS_DIR/$primary_slug" -maxdepth 1 -type f -name '*.jsonl' 2>/dev/null)
+  if [ "$exact_new" -eq 0 ]; then
     anc="$VROOT"; level=0
     while [ "$level" -lt 3 ]; do
       parent=$(dirname "$anc")
@@ -231,11 +264,6 @@ else
     done
   fi
 fi
-
-# Resolve the watermark string: explicit --since wins, else line 1 of the state file.
-watermark_str="$SINCE"
-if [ -z "$watermark_str" ] && [ -f "$STATE" ]; then watermark_str=$(head -n1 "$STATE"); fi
-watermark_epoch=$(iso_to_epoch "$watermark_str")
 
 # Collect session files newer than the watermark across the resolved slug dirs. Dedup
 # slugs (an all-worktrees list can repeat); a file lives in exactly one slug dir.
@@ -252,7 +280,7 @@ scan_slug() {  # $1 = slug, $2 = non-empty -> content-filter to transcripts ment
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     [ "$(mtime_epoch "$f")" -gt "$watermark_epoch" ] || continue
-    if [ -n "$filt" ]; then grep -qsF -- "$VROOT" "$f" || continue; fi
+    if [ -n "$filt" ]; then grep -qsE -- "$VROOT_PAT" "$f" || continue; fi
     found="$found$f"$'\n'
   done < <(find "$dir" -maxdepth 1 -type f -name '*.jsonl' 2>/dev/null | sort)
   return 0
@@ -279,30 +307,39 @@ if [ -n "$DOCTOR" ]; then
   else
     echo "  projects store: $PROJECTS_DIR (MISSING)"
   fi
-  healthy=""
+  healthy_new=""; any_present=""
   for slug in $slugs; do
     [ -n "$slug" ] || continue
     dir="$PROJECTS_DIR/$slug"
     if [ ! -d "$dir" ]; then echo "  slug dir:       $dir (MISSING)"; continue; fi
-    n=$(find "$dir" -maxdepth 1 -type f -name '*.jsonl' 2>/dev/null | wc -l | tr -d ' ')
-    echo "  slug dir:       $dir ($n transcript(s))"
-    [ "$n" -gt 0 ] && healthy=1
+    n=0; m=0
+    while IFS= read -r f; do
+      [ -n "$f" ] || continue
+      n=$((n + 1))
+      [ "$(mtime_epoch "$f")" -gt "$watermark_epoch" ] && m=$((m + 1))
+    done < <(find "$dir" -maxdepth 1 -type f -name '*.jsonl' 2>/dev/null)
+    echo "  slug dir:       $dir ($n transcript(s), $m new since watermark)"
+    [ "$n" -gt 0 ] && any_present=1
+    [ "$m" -gt 0 ] && healthy_new=1
   done
   fb_total=0
   for slug in $fb_slugs; do
     [ -n "$slug" ] || continue
     dir="$PROJECTS_DIR/$slug"
     [ -d "$dir" ] || continue
-    n=$(grep -lsF -- "$VROOT" "$dir"/*.jsonl 2>/dev/null | wc -l | tr -d ' ' || true)
+    n=$(grep -lsE -- "$VROOT_PAT" "$dir"/*.jsonl 2>/dev/null | wc -l | tr -d ' ' || true)
     echo "  fallback dir:   $dir ($n transcript(s) referencing this vault)"
     fb_total=$(( fb_total + n ))
   done
   echo "  new sessions since watermark: $count_new"
-  if [ -n "$healthy" ]; then
+  if [ -n "$healthy_new" ]; then
     echo "  verdict: ok — session transcripts are found where expected"
     exit 0
   elif [ "$fb_total" -gt 0 ]; then
-    echo "  verdict: ok (fallback) — the exact slug dir is missing/empty, but ancestor-slug transcripts referencing this vault were found. Consider pinning dream_project_slug: in .agents/vault-profile.md to that directory name."
+    echo "  verdict: ok (fallback) — the exact slug dir is missing/empty (or has nothing new), but ancestor-slug transcripts referencing this vault were found. Consider pinning dream_project_slug: in .agents/vault-profile.md to that directory name."
+    exit 0
+  elif [ -n "$any_present" ]; then
+    echo "  verdict: ok — transcripts exist in the expected slug dir; none are newer than the watermark and no fallback transcripts reference this vault (nothing new to dream about)"
     exit 0
   else
     echo "  verdict: BROKEN — expected session directory not found (or empty), and no fallback transcripts reference this vault. The dream nudge can never fire. Fix: set dream_project_slug: \"<dir name under $PROJECTS_DIR>\" in .agents/vault-profile.md to where this vault's Claude Code sessions actually land."
