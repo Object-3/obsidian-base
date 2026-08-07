@@ -27,6 +27,12 @@
 #   7. dream-if-stale is silent below either gate, and on broken/missing/malformed state
 #   8. the hook is read-only — mutates neither the watermark, the session store, nor the repo,
 #      checked on the FIRE path (not just the pre-gate silent path)
+#   9. slug resolution: the exact-root slug dir wins when it has transcripts (no fallback)
+#  10. ancestor fallback (issue #54): missing/empty exact slug dir falls back to parent
+#      slugs, content-filtered to transcripts referencing THIS vault's path, bounded at $HOME
+#  11. dream_project_slug override in vault-profile.md pins the slug (no fallback)
+#  12. --doctor distinguishes "0 new sessions" from "session dir missing" (exit 3),
+#      while --count on the same broken store stays 0 / exit 0 (hook silence preserved)
 #
 # Exits non-zero if any assertion fails.
 set -uo pipefail
@@ -157,6 +163,68 @@ if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 else
   ok "not a git repo — skipping tracked-file check"
 fi
+
+echo "== 9: slug resolution — exact-root slug dir wins when it has transcripts =="
+# A fake multi-vault layout in a fixture HOME: two sibling vaults under one parent dir,
+# driven through the DREAM_ROOT / DREAM_PROFILE / HOME overrides (no DREAM_SLUGS, so the
+# real slug-resolution path runs).
+FHOME="$WORK/home"; VAULT="$FHOME/user/vault-alpha"; SIB="$FHOME/user/vault-beta"
+mkdir -p "$VAULT" "$SIB"
+PROJ2="$WORK/projects2"; mkdir -p "$PROJ2"
+PROF2="$WORK/profile.md"
+printf -- '---\ndream_session_scope: "this-checkout"\n---\n' > "$PROF2"
+slugof() { printf '%s' "$1" | sed 's/[^A-Za-z0-9]/-/g'; }
+S_VAULT=$(slugof "$VAULT"); S_PARENT=$(slugof "$FHOME/user"); S_HOME=$(slugof "$FHOME")
+vsess() { # $1 slug dir, $2 name, $3 path referenced in the transcript content
+  mkdir -p "$PROJ2/$1"
+  printf '{"type":"user","message":{"role":"user","content":"working in %s today"}}\n' "$3" > "$PROJ2/$1/$2.jsonl"
+}
+scan2() { HOME="$FHOME" DREAM_ROOT="$VAULT" DREAM_PROFILE="$PROF2" CLAUDE_PROJECTS_DIR="$PROJ2" bash "$SCAN" "$@"; }
+vsess "$S_VAULT"  a  "$VAULT"
+vsess "$S_VAULT"  b  "$VAULT"
+vsess "$S_PARENT" p1 "$VAULT"      # parent-slug transcript — ignored while the exact dir has files
+c=$(scan2 --count --since "$WM_2D")
+[ "$c" = "2" ] && ok "exact slug dir wins: 2 (parent-slug files not counted)" || bad "exact-slug count=$c != 2"
+
+echo "== 10: ancestor fallback with content filtering (issue #54 layout) =="
+# Empty (then missing) exact slug dir -> fallback to parent + grandparent slugs, counting
+# only transcripts that reference THIS vault's path.
+rm -rf "$PROJ2/$S_VAULT"; mkdir -p "$PROJ2/$S_VAULT"      # exists but EMPTY
+vsess "$S_PARENT" p2 "$SIB"        # sibling vault's session — must be filtered OUT
+vsess "$S_HOME"   h1 "$VAULT"      # grandparent (== fixture HOME) — within the bound
+vsess "$(slugof "$WORK")" x1 "$VAULT"   # ABOVE the fixture HOME — must never be scanned
+c=$(scan2 --count --since "$WM_2D")
+[ "$c" = "2" ] && ok "fallback (empty exact dir): content-filtered count 2 (p1 + h1)" || bad "fallback-empty count=$c != 2"
+printf '%s\n' "$(scan2 --since "$WM_2D")" | grep -q 'p2.jsonl' && bad "sibling vault's transcript miscounted" || ok "sibling vault's transcript filtered out"
+rm -rf "$PROJ2/$S_VAULT"                                   # now MISSING entirely
+c=$(scan2 --count --since "$WM_2D")
+[ "$c" = "2" ] && ok "fallback (missing exact dir): count 2" || bad "fallback-missing count=$c != 2"
+printf '%s\n' "$(scan2 --since "$WM_2D")" | grep -q 'x1.jsonl' && bad "fallback climbed past \$HOME" || ok "fallback bounded at \$HOME"
+
+echo "== 11: dream_project_slug override pins the slug (no fallback) =="
+printf -- '---\ndream_session_scope: "this-checkout"\ndream_project_slug: "customslug"\n---\n' > "$PROF2"
+vsess customslug o1 "$VAULT"; vsess customslug o2 "$SIB"; vsess customslug o3 "unrelated"
+c=$(scan2 --count --since "$WM_2D")
+[ "$c" = "3" ] && ok "override: all 3 transcripts in the pinned slug counted (no content filter)" || bad "override count=$c != 3"
+printf '%s\n' "$(scan2 --since "$WM_2D")" | grep -q 'p1.jsonl' && bad "override still ran the fallback" || ok "override suppresses the ancestor fallback"
+
+echo "== 12: --doctor distinguishes 0-sessions from a missing session dir =="
+printf -- '---\ndream_session_scope: "this-checkout"\n---\n' > "$PROF2"
+# healthy: exact slug dir with a transcript -> exit 0
+vsess "$S_VAULT" a "$VAULT"
+out=$(scan2 --doctor); rc=$?
+[ "$rc" = "0" ] && printf '%s' "$out" | grep -q 'verdict: ok' && ok "doctor: healthy exact layout -> exit 0" || bad "doctor healthy: rc=$rc out='$out'"
+# fallback-reachable: exact dir gone, parent transcripts reference the vault -> exit 0, names fallback
+rm -rf "$PROJ2/$S_VAULT"
+out=$(scan2 --doctor); rc=$?
+[ "$rc" = "0" ] && printf '%s' "$out" | grep -q 'fallback' && ok "doctor: fallback layout -> exit 0, mentions fallback" || bad "doctor fallback: rc=$rc out='$out'"
+# broken: no slug dir anywhere and nothing references the vault -> exit 3, says BROKEN
+PROJ3="$WORK/projects3"; mkdir -p "$PROJ3"
+out=$(HOME="$FHOME" DREAM_ROOT="$VAULT" DREAM_PROFILE="$PROF2" CLAUDE_PROJECTS_DIR="$PROJ3" bash "$SCAN" --doctor); rc=$?
+[ "$rc" = "3" ] && printf '%s' "$out" | grep -q 'BROKEN' && ok "doctor: missing session dir -> exit 3 + BROKEN verdict" || bad "doctor broken: rc=$rc out='$out'"
+# ...while non-doctor mode on the same broken store stays 0 / exit 0 (hook silence preserved)
+c=$(HOME="$FHOME" DREAM_ROOT="$VAULT" DREAM_PROFILE="$PROF2" CLAUDE_PROJECTS_DIR="$PROJ3" bash "$SCAN" --count); rc=$?
+[ "$c" = "0" ] && [ "$rc" = "0" ] && ok "--count on broken store: 0, exit 0 (hook stays silent)" || bad "broken-store --count: c=$c rc=$rc"
 
 echo
 echo "dream-smoke: $pass passed, $fail failed"

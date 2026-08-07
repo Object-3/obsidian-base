@@ -65,7 +65,32 @@ Run this if the vendored skills are stale or `.claude/skills` / `.codex/skills`
 pointers are broken. If the user also installed skills into user-scope, **offer**
 `/install-skills` to refresh the global copies (they don't auto-update).
 
-### 4. (Optional) base freshness & sensitive plane
+### 4. Dream nudge & session-store wiring
+
+```bash
+.agents/scripts/dream-scan.sh --doctor   # CHECK: exit 0 = ok, 3 = broken wiring
+```
+
+The `/vault-dream` nudge only fires when `dream-scan.sh --count` sees enough new agent
+sessions — but Claude Code keys session transcripts to the directory it was *launched*
+from (`~/.claude/projects/<slug>`), which in multi-vault / parent-dir layouts is not the
+vault root, so the count can be stuck at 0 forever with no error (the hook is
+deliberately silent on broken state — this check is where that failure mode surfaces).
+`--doctor` distinguishes:
+
+- `ok` — transcripts found in the expected slug directory; a count of 0 just means
+  nothing new since the watermark (healthy).
+- `ok (fallback)` — the exact slug dir is missing/empty, but the scanner's ancestor-dir
+  fallback found transcripts referencing this vault. Works, but worth pinning.
+- `BROKEN` (exit 3) — the expected session directory doesn't exist (or is empty) and no
+  fallback transcripts reference this vault: the nudge can never fire.
+
+**Repair (on consent):** set `dream_project_slug: "<slug>"` in
+`.agents/vault-profile.md` (a per-vault file — safe to edit) to the actual directory
+name under `~/.claude/projects/` where this vault's sessions land; the doctor output
+lists the candidates. That's a wiring/state fix, not an engine edit.
+
+### 5. (Optional) base freshness & sensitive plane
 
 - **Base:** if the user wants upstream engine improvements, point them at `/update-base`
   (it's an engine change → branch + PR). Don't run it unprompted.
