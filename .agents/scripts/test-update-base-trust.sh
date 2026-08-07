@@ -19,7 +19,13 @@
 #      pre-commit) gets a loud drop-warning when the overlay rewrites the file.
 #   4. update-base writes .agents/.base-sync ("<sha> <ref> <iso-timestamp>") with
 #      the resolved base SHA, and stages it.
-#   5. .githooks/pre-commit executes the guards in .githooks/pre-commit.d/:
+#   5. Scenario B — injection defense + steady state: a base-SHIPPED file under
+#      .githooks/pre-commit.d/ is NEVER checked out into the vault ("never
+#      overlaid" holds in both directions), a vault with committed pre-commit.d
+#      guards still reaches "Already up to date" (no per-run sync noise / warning
+#      fatigue), a surviving marked guard raises NO false drop-warning, and the
+#      no-op run announces the staged .base-sync stamp.
+#   6. .githooks/pre-commit executes the guards in .githooks/pre-commit.d/:
 #      passing guard → commit allowed; failing guard → blocked; non-executable
 #      file → ignored.
 #
@@ -52,7 +58,8 @@ base_sha="$(git -C "$base" rev-parse main)"
 git clone -q --local "$base" "$fork"
 git -C "$fork" checkout -q -B main
 mkdir -p "$fork/.githooks/pre-commit.d"
-printf '#!/usr/bin/env bash\nexit 0\n' > "$fork/.githooks/pre-commit.d/my-guard.sh"
+printf '#!/usr/bin/env bash\n# vault-local: surviving guard — its marker must NOT trigger a drop warning\nexit 0\n' \
+  > "$fork/.githooks/pre-commit.d/my-guard.sh"
 chmod +x "$fork/.githooks/pre-commit.d/my-guard.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$fork/.claude/hooks/vault-only-hook.sh"
 chmod +x "$fork/.claude/hooks/vault-only-hook.sh"
@@ -76,11 +83,11 @@ else
   bad "pre-commit.d/ guard was pruned or untracked by the overlay"
 fi
 
-# 2. Non-base file under .claude/hooks/ is reported loudly, then pruned.
-if grep -q "NON-BASE file '.claude/hooks/vault-only-hook.sh' will be DELETED" "$tmp/out.log"; then
-  ok "loss detection reported the non-base .claude/hooks/ file"
+# 2. Non-base file under .claude/hooks/ is reported loudly when pruned.
+if grep -q "pruned NON-BASE file '.claude/hooks/vault-only-hook.sh'" "$tmp/out.log"; then
+  ok "prune loudly reported the non-base .claude/hooks/ file"
 else
-  bad "no loud NON-BASE report for .claude/hooks/vault-only-hook.sh"
+  bad "no loud NON-BASE prune report for .claude/hooks/vault-only-hook.sh"
 fi
 if [ ! -f "$fork/.claude/hooks/vault-only-hook.sh" ]; then
   ok "non-base .claude/hooks/ file was pruned (deletion visible, not silent)"
@@ -88,11 +95,18 @@ else
   bad "non-base .claude/hooks/ file was not pruned"
 fi
 
-# 3. 'vault-local' marker drop-warning on the overlaid pre-commit.
-if grep -q "'.githooks/pre-commit' has 1 'vault-local:'-marked line" "$tmp/out.log"; then
+# 3. '# vault-local:' marker drop-warning on the overlaid pre-commit (diff-based),
+# and NO warning about the surviving guard in pre-commit.d/ (it also carries the
+# marker, but it is not being dropped — a count-based heuristic would false-alarm).
+if grep -q "'.githooks/pre-commit': 1 '# vault-local:'-marked line" "$tmp/out.log"; then
   ok "marker drop-warning fired for .githooks/pre-commit"
 else
-  bad "no 'vault-local' drop-warning for .githooks/pre-commit"
+  bad "no '# vault-local:' drop-warning for .githooks/pre-commit"
+fi
+if grep -q "'.githooks/pre-commit.d/my-guard.sh'" "$tmp/out.log"; then
+  bad "false loss warning about the SURVIVING pre-commit.d/ guard"
+else
+  ok "no false loss warning about the surviving pre-commit.d/ guard"
 fi
 if cmp -s "$base/.githooks/pre-commit" "$fork/.githooks/pre-commit"; then
   ok "pre-commit restored byte-identical to base (overlay itself still works)"
@@ -115,6 +129,73 @@ if [ -f "$stamp" ]; then
     && ok "stamp is staged" || bad "stamp not staged"
 else
   bad ".agents/.base-sync was not written"
+fi
+
+# ── Scenario B: injection defense + steady state ──
+# base2 SHIPS a file under .githooks/pre-commit.d/ (a compromised upstream planting
+# an auto-running, engine-guard-exempt executable). fork2 carries its own committed
+# guard there. The run must (a) NOT inject the base file, (b) keep the vault guard,
+# and (c) still report "Already up to date" — the extension point must not keep the
+# vault permanently "dirty" against the base.
+echo "== scenario B: base-shipped pre-commit.d file + steady state =="
+base2="$tmp/base2"; fork2="$tmp/fork2"
+git clone -q --local "$base" "$base2"
+git -C "$base2" checkout -q -B main
+mkdir -p "$base2/.githooks/pre-commit.d"
+printf '#!/usr/bin/env bash\necho pwned\n' > "$base2/.githooks/pre-commit.d/injected.sh"
+chmod +x "$base2/.githooks/pre-commit.d/injected.sh"
+git -C "$base2" add .githooks/pre-commit.d/injected.sh
+git -C "$base2" -c user.email=t@t -c user.name=t commit -q -m "base ships a pre-commit.d file (must never propagate)"
+
+git clone -q --local "$base" "$fork2"
+git -C "$fork2" checkout -q -B main
+mkdir -p "$fork2/.githooks/pre-commit.d"
+printf '#!/usr/bin/env bash\n# vault-local: steady-state guard\nexit 0\n' > "$fork2/.githooks/pre-commit.d/local-guard.sh"
+chmod +x "$fork2/.githooks/pre-commit.d/local-guard.sh"
+git -C "$fork2" add .githooks/pre-commit.d/local-guard.sh
+git -C "$fork2" -c user.email=t@t -c user.name=t commit -q -m "vault-local guard (steady state)"
+
+( cd "$fork2" && BASE_REPO_URL="$base2" BASE_REF=main .agents/scripts/update-base.sh ) >"$tmp/out2.log" 2>&1
+run2_rc=$?
+sed 's/^/     | /' "$tmp/out2.log"
+[ "$run2_rc" -eq 0 ] && ok "run B exited 0" || bad "run B exited $run2_rc"
+
+if [ ! -e "$fork2/.githooks/pre-commit.d/injected.sh" ] \
+   && ! git -C "$fork2" diff --cached --name-only | grep -q "injected.sh"; then
+  ok "base-shipped pre-commit.d file was NOT injected (not on disk, not staged)"
+else
+  bad "base-shipped pre-commit.d/injected.sh landed in the vault (injection!)"
+fi
+
+if [ -x "$fork2/.githooks/pre-commit.d/local-guard.sh" ]; then
+  ok "vault-local guard survived run B"
+else
+  bad "vault-local guard lost in run B"
+fi
+
+if grep -q "Already up to date" "$tmp/out2.log"; then
+  ok "steady state: committed pre-commit.d guards still reach 'Already up to date'"
+else
+  bad "steady state broken: run B did not report 'Already up to date'"
+fi
+
+if grep -q "!!" "$tmp/out2.log"; then
+  bad "run B printed loss warnings on a steady-state vault"
+else
+  ok "no loss warnings on a steady-state vault"
+fi
+
+if grep -q ".base-sync was refreshed" "$tmp/out2.log"; then
+  ok "no-op run announces the staged .base-sync stamp"
+else
+  bad "no-op run did not announce the staged stamp"
+fi
+
+base2_sha="$(git -C "$base2" rev-parse main)"
+if [ "$(cut -d' ' -f1 "$fork2/.agents/.base-sync")" = "$base2_sha" ]; then
+  ok "run B stamp records base2's SHA"
+else
+  bad "run B stamp SHA wrong"
 fi
 
 # ── 5. The pre-commit hook runs .githooks/pre-commit.d/ guards ──

@@ -107,8 +107,8 @@ grow in as the vault expands.
 | `.agents/dream-state` | Committed watermark (ISO-8601 timestamp) of the last `/vault-dream` run; advances only when the dream's PR is merged. Per-vault state — seeded by `init-vault.sh`, not overlaid by `update-base`. | mechanism |
 | `.agents/.base-url` | Persisted fork/custom base git URL (one line). Per-vault, **tracked**, written by setup when a non-default URL is used (or hand-edited to permanently pin a fork) — **never** overlaid by `update-base`. Must not contain credentials (`user:token@`); authenticate via git credential helper or SSH. | mechanism |
 | `.agents/.base-sync` | Stamp of the last base sync (`<sha> <ref> <iso-timestamp>`, one line), written by `update-base.sh` on every run. Per-vault state — **never** overlaid — read by `/doctor` to measure engine staleness (SHA comparison against `git ls-remote`, never `rev-list --count`: the sync fetch is depth-1 and template instances share no history with the base). | mechanism |
-| `.githooks/pre-commit.d/` | *Vault-local extension point, created on demand:* every **executable** file here runs after the base pre-commit guards; non-zero exit blocks the commit. **Never** overlaid or pruned by `update-base` — put your own guards here, not inside the base-owned `.githooks/pre-commit`. | yours |
-| `.claude/hooks-local/` | *Vault-local extension point, created on demand:* your own Claude Code hook scripts, registered in the gitignored `.claude/settings.local.json` (Claude Code merges it over `settings.json`). **Never** overlaid by `update-base` — vault-local hooks in `.claude/hooks/` or registrations in `settings.json` are deleted by the next overlay. | yours |
+| `.githooks/pre-commit.d/` | *Vault-local extension point, created on demand:* every **executable** file here runs after the base pre-commit guards; non-zero exit blocks the commit. **Never** overlaid or pruned by `update-base` — put your own guards here, not inside the base-owned `.githooks/pre-commit` (unavoidable in-file additions get a `# vault-local:` comment so `update-base` can flag their loss). Same caveat as the base guards: Obsidian Git's bundled git may skip native hooks, so guards here don't run on the auto-commit ingestion path — they're a backstop for CLI/agent commits, not a substitute for the rule they enforce. | yours |
+| `.claude/hooks-local/` | *Vault-local extension point, created on demand:* your own Claude Code hook scripts, registered in the gitignored `.claude/settings.local.json` (Claude Code merges it over `settings.json`). **Never** overlaid by `update-base` — vault-local hooks in `.claude/hooks/` or registrations in `settings.json` are deleted by the next overlay (mark any unavoidable in-file addition with a `# vault-local:` comment so the drop is at least flagged). | yours |
 | `.claude/`, `.codex/` | Tool-specific config; `skills`/`agents` here are pointers to `.agents/` | engine |
 | `.obsidian/` | Obsidian config | engine |
 
@@ -323,7 +323,9 @@ including ephemeral cloud containers that don't auto-install them.
   **The overlay is whole-file replacement, not a merge** — vault-local additions inside
   base-owned files (an appended pre-commit check, a hook registration in
   `.claude/settings.json`, an extra script in `.claude/hooks/`) are dropped by the next
-  update. `update-base` reports loudly what it is about to drop; put such additions in
+  update. `update-base` loudly reports what it can **detect** it is dropping — pruned
+  non-base files, and removed `# vault-local:`-marked lines — but an unmarked in-file
+  edit (e.g. a bare extra `.gitignore` line) still reverts silently. Put such additions in
   the survivable extension points instead: `.githooks/pre-commit.d/` for git guards, and
   `.claude/hooks-local/` + the gitignored `.claude/settings.local.json` for Claude hooks
   (see the Directory map). Marking unavoidable in-file additions with a `# vault-local:`

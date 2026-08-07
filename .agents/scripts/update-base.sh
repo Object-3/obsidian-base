@@ -119,8 +119,10 @@ git fetch -q --depth 1 "$EPHEMERAL_REMOTE" "$BASE_REF" || {
 # its vendored skills (sync-skills always rewrites both together). If the lock is
 # missing/unparseable — or jq is absent — we can't tell authored from vendored, so we
 # skip skill overlay this run and warn, rather than risk clobbering a vendored skill.
+skills_partial=0   # 1 = base-authored skill overlay skipped → the .base-sync stamp is marked partial
 if ! command -v jq >/dev/null 2>&1; then
   echo "  ! jq not found; skipping base-authored skill sync this run (install jq — sync-skills needs it too)" >&2
+  skills_partial=1
 elif base_lock="$(git show FETCH_HEAD:.agents/skill-sources.lock.json 2>/dev/null)" \
      && base_vendored="$(printf '%s' "$base_lock" | jq -r '.skills[]?' 2>/dev/null)"; then
   while IFS= read -r skdir; do
@@ -131,6 +133,7 @@ elif base_lock="$(git show FETCH_HEAD:.agents/skill-sources.lock.json 2>/dev/nul
             <(printf '%s\n' "$base_vendored" | sed '/^$/d' | sort -u))
 else
   echo "  ! base has no readable/parseable .agents/skill-sources.lock.json; skipping base-authored skill sync this run" >&2
+  skills_partial=1
 fi
 
 # Warn about uncommitted local edits to base-owned files (they'll be overwritten).
@@ -142,29 +145,22 @@ done
 
 # ── Loss detection (issues #42/#59): the overlay is whole-file replacement, no merge.
 # COMMITTED vault-local content under an overlaid path does not survive it — the
-# uncommitted-changes warning above never fires for it, so without this check the
-# deletion would be silent. Two extension points DO survive (never overlaid, never
-# pruned — put vault-local additions there instead of inside base-owned files):
+# uncommitted-changes warning above never fires for it, so without the reporting
+# below the deletion would be silent. Two extension points DO survive (excluded from
+# overlay, prune, and diff via EXT_EXCLUDE — put vault-local additions there instead
+# of inside base-owned files):
 #   .githooks/pre-commit.d/  — executable vault-local pre-commit guards, run by the
 #                              base .githooks/pre-commit after its own checks
 #   .claude/hooks-local/     — vault-local Claude hook scripts, registered in the
 #                              gitignored .claude/settings.local.json (Claude Code
 #                              merges it over .claude/settings.json)
-# (a) Whole files: anything tracked under .claude/hooks/ or .githooks/ that is NOT in
-# the base tree is a vault-local addition the prune step below will delete. Say so, loudly.
-for d in ".claude/hooks" ".githooks"; do
-  git ls-tree -r --name-only FETCH_HEAD -- "$d" 2>/dev/null | grep -q . || continue
-  while IFS= read -r f; do
-    [ -n "$f" ] || continue
-    case "$f" in .githooks/pre-commit.d/*) continue ;; esac   # extension point — kept
-    echo "  !! NON-BASE file '$f' will be DELETED by this overlay (it is not in the base tree)." >&2
-    echo "  !!   If it is your own addition, restore it from git history and move it to a" >&2
-    echo "  !!   survivable extension point: .githooks/pre-commit.d/ for git guards, or" >&2
-    echo "  !!   .claude/hooks-local/ + .claude/settings.local.json for Claude hooks." >&2
-  done < <(comm -23 \
-            <(git ls-files -- "$d" | sort) \
-            <(git ls-tree -r --name-only FETCH_HEAD -- "$d" | sort))
-done
+# The exclusion is also a SECURITY boundary: without it, `git checkout FETCH_HEAD --
+# .githooks` would inject a base-SHIPPED file into pre-commit.d/ — an auto-running,
+# engine-guard-exempt executable a compromised upstream could plant. "Never overlaid"
+# must hold in BOTH directions: vault files survive, base files never land there.
+# (.claude/hooks-local/ is a sibling of the overlaid .claude/hooks/, so it falls
+# outside every pathspec anyway; the exclusion below is belt-and-suspenders.)
+EXT_EXCLUDE=(":(exclude).githooks/pre-commit.d" ":(exclude).claude/hooks-local")
 
 changed=0; pruned=0
 for p in "${PATHS[@]}"; do
@@ -172,38 +168,49 @@ for p in "${PATHS[@]}"; do
   git ls-tree -r --name-only FETCH_HEAD -- "$p" 2>/dev/null | grep -q . || continue
 
   # Prune: delete tracked files under this path that no longer exist in the base —
-  # except the vault-local extension point .githooks/pre-commit.d/ (it lives under
-  # the overlaid .githooks/ but is per-vault by contract, so it must survive).
+  # LOUDLY (issues #42/#59): the prune knows this file is tracked here but not in the
+  # base tree, i.e. either the base removed it or it is a vault-local addition the
+  # vault is about to lose. Either way, say so where the user can see it, with the
+  # survivable alternative — never a silent one-liner.
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    case "$f" in .githooks/pre-commit.d/*) continue ;; esac
-    git rm -q --ignore-unmatch -- "$f" >/dev/null 2>&1 && { echo "  pruned: $f"; pruned=$((pruned+1)); }
+    if git rm -q --ignore-unmatch -- "$f" >/dev/null 2>&1; then
+      pruned=$((pruned+1))
+      echo "  !! pruned NON-BASE file '$f' — tracked in this vault but not in the base tree." >&2
+      echo "  !!   If the base removed it, this is correct. If it is YOUR OWN addition, restore" >&2
+      echo "  !!   it from git history and move it to a survivable extension point:" >&2
+      echo "  !!   .githooks/pre-commit.d/ for git guards, .claude/hooks-local/ +" >&2
+      echo "  !!   .claude/settings.local.json for Claude hooks. See AGENTS.md → Directory map." >&2
+    fi
   done < <(comm -23 \
-            <(git ls-files -- "$p" | sort) \
+            <(git ls-files -- "$p" "${EXT_EXCLUDE[@]}" | sort) \
             <(git ls-tree -r --name-only FETCH_HEAD -- "$p" | sort))
 
   # Overlay base content — but only if it actually differs from current HEAD, so a
   # no-op run honestly reports "up to date" instead of re-staging identical files.
-  if git diff --quiet HEAD FETCH_HEAD -- "$p"; then
+  # The extension points are excluded from the comparison: a vault carrying committed
+  # pre-commit.d/ guards must still reach "Already up to date" in steady state.
+  if git diff --quiet HEAD FETCH_HEAD -- "$p" "${EXT_EXCLUDE[@]}"; then
     continue
   fi
 
-  # (b) Loss detection inside overlaid files, best-effort (issue #42): a vault that
-  # marks its own additions with a '# vault-local:' comment (the documented
-  # convention) gets a loud, per-file callout when the incoming base copy carries
-  # fewer such marks than the current copy — i.e. the overlay is about to drop them.
+  # Loss detection inside overlaid files, best-effort (issue #42): a vault that marks
+  # its own additions with a '# vault-local:' comment (the documented convention)
+  # gets a loud, per-file callout when the overlay would REMOVE marked lines — i.e.
+  # diff-based ('-' lines in HEAD→base), not count-based, so a base rewording that
+  # merely mentions the marker elsewhere can't false-alarm, and an equal count can't
+  # mask a real drop.
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    have="$(git show "HEAD:$f" 2>/dev/null | grep -ci 'vault-local:' || true)"
-    incoming="$(git show "FETCH_HEAD:$f" 2>/dev/null | grep -ci 'vault-local:' || true)"
-    if [ "${have:-0}" -gt "${incoming:-0}" ]; then
-      echo "  !! '$f' has ${have} 'vault-local:'-marked line(s); the incoming base copy has ${incoming:-0}." >&2
-      echo "  !!   The overlay DROPS the difference — re-apply it via the extension points" >&2
-      echo "  !!   above (or re-add by hand from git history after this run)." >&2
+    dropped="$(git diff HEAD FETCH_HEAD -- "$f" | grep -c '^-.*# vault-local:' || true)"
+    if [ "${dropped:-0}" -gt 0 ]; then
+      echo "  !! '$f': $dropped '# vault-local:'-marked line(s) are NOT in the incoming base copy." >&2
+      echo "  !!   The overlay DROPS them — re-apply via the extension points (see AGENTS.md)," >&2
+      echo "  !!   or re-add by hand from git history after this run." >&2
     fi
-  done < <(git diff --name-only HEAD FETCH_HEAD -- "$p")
+  done < <(git diff --name-only HEAD FETCH_HEAD -- "$p" "${EXT_EXCLUDE[@]}")
 
-  git checkout FETCH_HEAD -- "$p"
+  git checkout FETCH_HEAD -- "$p" "${EXT_EXCLUDE[@]}"
   echo "  synced: $p"; changed=$((changed+1))
 done
 
@@ -217,11 +224,18 @@ chmod +x .agents/scripts/*.sh .claude/hooks/*.sh 2>/dev/null || true
 # so `git rev-list --count` has no meaningful ancestry to walk. Per-vault state,
 # never overlaid (the base repo never tracks a .base-sync of itself). Written even
 # on a no-op run — "already up to date" is exactly a fresh staleness measurement.
-printf '%s %s %s\n' "$(git rev-parse FETCH_HEAD)" "$BASE_REF" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .agents/.base-sync
+# When the base-authored skill overlay was skipped (no jq / unreadable base lock),
+# a 4th field 'partial-skills' marks the stamp so the doctor doesn't report a vault
+# with stale base-authored skills as fully current.
+stamp_line="$(git rev-parse FETCH_HEAD) $BASE_REF $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+[ "$skills_partial" -eq 1 ] && stamp_line="$stamp_line partial-skills"
+printf '%s\n' "$stamp_line" > .agents/.base-sync
 git add .agents/.base-sync 2>/dev/null || true
 
 if [ "$changed" -eq 0 ] && [ "$pruned" -eq 0 ]; then
   echo "Already up to date with $BASE_REPO_URL @ $BASE_REF."
+  echo "Note: the freshness stamp .agents/.base-sync was refreshed and is STAGED — a plain"
+  echo "commit of it is fine (per-vault state, not an engine edit; no BASE_UPDATE=1 needed)."
 else
   echo "Updated $changed path(s), pruned $pruned file(s). Changes are STAGED, not committed."
   echo "Next:"
