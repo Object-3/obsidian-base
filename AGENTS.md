@@ -110,8 +110,17 @@ grow in as the vault expands.
 | `.obsidian/` | Obsidian config | engine |
 
 **Folders beginning with a dot (`.agents`, `.claude`, `.codex`, `.obsidian`) are
-ignored by Obsidian** — so skills, agents, and config never pollute the knowledge
-graph, search, or tag index. Keep all skill/agent machinery under dot-folders.
+natively ignored by Obsidian** — so skills, agents, and config never pollute the
+knowledge graph, search, or tag index. Keep all skill/agent machinery under
+dot-folders. That native exclusion is the *only* mechanism to rely on: do **not**
+also add dot-folders (or `log.md`) to Settings → Files and links → *Excluded files*
+(`userIgnoreFilters` in `.obsidian/app.json`) — the Local REST API honors that
+setting even for direct-path reads, which breaks the documented MCP fast-orient
+fetch of `.agents/vault-profile.md` and MCP appends to `log.md`. The shipped
+`app.json` therefore excludes only the root engine *files* that Obsidian would
+otherwise index (`AGENTS.md`, `CLAUDE.md`, `README.md`, `llms.txt`); the
+`hide-engine-files.css` snippet handles hiding them (and `log.md`) from the file
+explorer.
 
 **Topical folders (optional, grow-into).** Notes live in the vault root until a
 single topic accumulates more than ~5–8 notes; then promote that topic to a

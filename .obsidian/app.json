@@ -2,13 +2,9 @@
   "promptDelete": false,
   "attachmentFolderPath": "assets",
   "userIgnoreFilters": [
-    ".agents/",
-    ".claude/",
-    ".codex/",
     "AGENTS.md",
     "CLAUDE.md",
     "README.md",
-    "llms.txt",
-    "log.md"
+    "llms.txt"
   ]
 }
