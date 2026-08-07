@@ -105,7 +105,9 @@ For each durable candidate:
 > **Privacy (self-enforced — do not rely on the pre-commit hook alone; the Obsidian Git
 > plugin may use a bundled git that skips native hooks):** learnings with a secret, API
 > key, credential, or third-party-confidential detail are either **de-identified** (no name,
-> owner, verbatim figures) before landing in a tracked note, or **routed to `_sensitive/`**
+> owner, verbatim figures — scoped per AGENTS.md's *"Third-party material"* definition:
+> public, non-confidential names and figures are **not** redacted) before landing in a
+> tracked note, or **routed to `_sensitive/`**
 > with `classification: confidential` in the frontmatter (gitignored, still first-class in
 > Obsidian). The `**/*.private.md` gitignore and the pre-commit confidential guard are
 > backstops, not the primary control.
@@ -139,8 +141,17 @@ step); this phase is the semantic layer on top.
 - **Refresh `hot.md`** (create it if absent) — the ~500-word recent-context cache agents
   read first: distill this run's additions, decisions, and open threads. Keep it short; it
   is a cache, not an archive.
-- **Roll up / archive stale `log.md` entries** so the append-only log doesn't grow
-  unbounded (summarize old runs into a rolled-up block), then append this run's line:
+- **Roll up stale `log.md` entries** so the append-only log doesn't grow unbounded.
+  **Default policy:** once `log.md` exceeds ~300 lines, roll up entries **older than
+  90 days** by collapsing each rolled-up month into a **single summary line in place**
+  (e.g. `## [YYYY-MM] rolled up | N entries: <one-line gist>`). This rollup is the
+  **sanctioned exception** to `log.md`'s append-only rule — and it summarizes only
+  **agent-authored** entries: any **human-authored** log entry is preserved verbatim
+  (moved into the month's rollup block, never summarized away), keeping the dream's
+  never-delete/rewrite-human-prose guarantee intact. If the vault's
+  maintainer has set a different rollup policy in `.agents/vault-profile.md`, honor
+  that instead. When in doubt — or on the **first** rollup in a vault — propose the
+  rollup and confirm with the user before applying it. Then append this run's line:
   `## [YYYY-MM-DD] dream | <one-line summary of the changeset>`.
 - **Bump `.agents/dream-state`** to now — `date -u +%Y-%m-%dT%H:%M:%SZ` (the exact form the
   reader parses; see the seeding note in Phase 1) — *as part of this changeset*, so the
