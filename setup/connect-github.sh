@@ -52,6 +52,18 @@ ask REPO_NAME "Repository name" "$DEFAULT_NAME"
 ask VISIBILITY "Visibility (private/public)" "private"
 
 # 3. create + push, set as origin.
+# Guard (issue #37): never push the private vault to the BASE template. A vault
+# that was cloned straight from the base (or a legacy scaffold) can still carry
+# an 'origin' pointing at the public template — pushing there would publish the
+# user's private notes, and once auto-sync turns on below, Obsidian Git would
+# keep merging the template into the vault. Drop that origin (and any base
+# tracking) so the create-your-own-repo path below runs instead; update-base
+# still reaches the base via its own ephemeral remote.
+if git remote get-url origin >/dev/null 2>&1 && lib_is_base_url "$(git remote get-url origin)" .; then
+  say "'origin' points at the PUBLIC base template ($(git remote get-url origin)) — removing it so your vault is never pushed there."
+  git branch --unset-upstream 2>/dev/null || true
+  git remote remove origin
+fi
 if git remote get-url origin >/dev/null 2>&1; then
   say "An 'origin' already exists ($(git remote get-url origin)); pushing to it."
   push_with_retry origin "$(git branch --show-current)"

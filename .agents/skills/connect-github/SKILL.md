@@ -21,7 +21,11 @@ safe to re-run. You own the judgment calls it can't make for you.
 - Confirm this is a vault with its own git history, not mid-way through some other git
   operation — `git rev-parse --is-inside-work-tree`.
 - Check `git remote -v`: if `origin` already exists, this is a re-run (the script just
-  pushes to it) — skip straight to step 3.
+  pushes to it) — skip straight to step 3. Exception: an `origin` that points at the
+  **base template repo** (`Object-3/obsidian-base` or the fork in `.agents/.base-url`)
+  is a scaffolding leftover, never a backup target — the script detects it, removes it,
+  and falls through to creating the user's own repo (issue #37; `/doctor`'s
+  `vault-git-doctor.sh` check catches the same drift).
 - Read `.agents/vault-profile.md` — its primary tag/tagline tell you whether this vault
   holds confidential/deal-specific content, which matters for step 1.
 

@@ -125,6 +125,34 @@ persist_base_url() {
   printf '%s\n' "$url" > "$dest"
 }
 
+# Normalize a git URL to bare lowercase host/path for identity comparison:
+# strips scheme (https/http/ssh/git), userinfo, a trailing slash and .git, and
+# rewrites scp-style git@host:owner/repo to host/owner/repo. So
+# https://github.com/Object-3/obsidian-base.git, git@github.com:Object-3/obsidian-base
+# and HTTPS://GitHub.com/object-3/obsidian-base/ all compare equal.
+lib_norm_git_url() {
+  local u; u="$(printf '%s' "$1" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+  u="${u%/}"; u="${u%.git}"
+  u="${u#ssh://}"; u="${u#git://}"; u="${u#https://}"; u="${u#http://}"
+  case "$u" in
+    *@*:*) u="${u#*@}"; u="${u%%:*}/${u#*:}" ;;   # scp-style git@host:owner/repo → host/owner/repo
+    *@*)   u="${u#*@}" ;;                  # userinfo on a scheme-stripped URL
+  esac
+  printf '%s\n' "$u"
+}
+
+# True when <url> points at the BASE template repo — either the public default
+# or this vault's pinned fork/custom base (resolve_base_url on <root>, default
+# cwd). Used to keep a personal vault's own remotes/tracking off the base: the
+# base must only ever be reached via update-base's ephemeral remote (issue #37).
+lib_is_base_url() {
+  local url="$1" root="${2:-.}" n
+  n="$(lib_norm_git_url "$url")"
+  [ -n "$n" ] || return 1
+  [ "$n" = "$(lib_norm_git_url "$DEFAULT_BASE_REPO_URL")" ] && return 0
+  [ "$n" = "$(lib_norm_git_url "$(resolve_base_url "$root")")" ]
+}
+
 # Vault name -> filesystem/label slug (lowercase, [a-z0-9-] only). Also the
 # basis for the per-vault MCP label `obsidian-<slug>`.
 lib_slugify() { printf '%s' "$1" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-'; }

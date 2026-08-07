@@ -65,7 +65,37 @@ Run this if the vendored skills are stale or `.claude/skills` / `.codex/skills`
 pointers are broken. If the user also installed skills into user-scope, **offer**
 `/install-skills` to refresh the global copies (they don't auto-update).
 
-### 4. (Optional) base freshness & sensitive plane
+### 4. Live-vault git sync health (base tracking + rename stubs)
+
+```bash
+.agents/scripts/vault-git-doctor.sh      # CHECK: reports drift, changes nothing (exit 3 = drift)
+```
+
+One script, two findings (both artifacts of Obsidian Git syncing the live vault):
+
+- **Base tracking (issue #37):** the vault's branch tracks — or a standing remote
+  points at — the **base template repo** (the fork pinned in `.agents/.base-url`, or
+  the public default `Object-3/obsidian-base`). With Obsidian Git's auto-pull+merge
+  on, that continuously merges the public template into the personal vault
+  (conflict-copy junk in history, content-bleed risk). The base must only ever be
+  reached via `update-base`'s ephemeral remote.
+- **0-byte rename stubs (issue #43):** empty `.md` files in the working tree at paths
+  **not present on `main`** — the signature of Obsidian being open while a
+  rename/move merge landed. Content is safe in git; the stubs are junk. The scan
+  never touches `_sensitive/`, `raw/`, or dot-folders.
+
+**Repair (on consent, per finding — they're independent):**
+```bash
+.agents/scripts/vault-git-doctor.sh --fix-tracking   # detach base tracking + remove base-URL remotes
+.agents/scripts/vault-git-doctor.sh --fix-stubs      # delete the reported 0-byte stubs
+```
+If `--fix-tracking` removed an `origin`, offer `setup/connect-github.sh` to connect
+the user's **own** backup repo. Before `--fix-stubs`, show the user the reported
+paths and confirm none is a brand-new note they deliberately created empty.
+(An unpersonalized checkout — `{{VAULT_NAME}}` still in `vault-profile.md`, i.e. the
+base repo itself — is never flagged or fixed: `origin` = base is legitimate there.)
+
+### 5. (Optional) base freshness & sensitive plane
 
 - **Base:** if the user wants upstream engine improvements, point them at `/update-base`
   (it's an engine change → branch + PR). Don't run it unprompted.

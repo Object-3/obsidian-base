@@ -38,7 +38,31 @@ function Push-WithRetry($remote, $branch) {
   git -c http.postBuffer=524288000 push -u $remote $branch
 }
 
+# Guard (issue #37): never push the private vault to the BASE template. Mirrors
+# connect-github.sh's lib_is_base_url check -- normalize both URLs (scheme,
+# userinfo, scp-style, trailing .git/slash, case) and compare against the public
+# default plus any fork pinned in .agents/.base-url.
+function Get-NormGitUrl($u) {
+  $u = ($u -replace '\s', '').ToLowerInvariant().TrimEnd('/')
+  if ($u.EndsWith('.git')) { $u = $u.Substring(0, $u.Length - 4) }
+  $u = $u -replace '^(ssh|git|https?)://', ''
+  if ($u -match '^[^/]*@([^/:]+):(.+)$') { $u = "$($Matches[1])/$($Matches[2])" }  # scp-style
+  elseif ($u -match '^[^/]*@(.+)$') { $u = $Matches[1] }                            # userinfo
+  return $u
+}
+$baseUrls = @("https://github.com/Object-3/obsidian-base.git")  # mirrors DEFAULT_BASE_REPO_URL in setup/lib.sh
+$baseUrlFile = Join-Path $root ".agents\.base-url"
+if (Test-Path $baseUrlFile) {
+  $pinned = (Get-Content $baseUrlFile | Where-Object { $_.Trim() } | Select-Object -First 1)
+  if ($pinned) { $baseUrls += $pinned.Trim() }
+}
 $origin = (git remote get-url origin) 2>$null
+if ($origin -and (($baseUrls | ForEach-Object { Get-NormGitUrl $_ }) -contains (Get-NormGitUrl $origin))) {
+  Say "'origin' points at the PUBLIC base template ($origin) - removing it so your vault is never pushed there."
+  git branch --unset-upstream 2>$null
+  git remote remove origin
+  $origin = $null
+}
 if ($origin) {
   Say "An 'origin' already exists ($origin); pushing to it."
   Push-WithRetry origin (git branch --show-current)
