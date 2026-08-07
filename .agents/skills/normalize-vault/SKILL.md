@@ -81,9 +81,12 @@ mass-rewrite, and don't bother normalizing throwaway scratch that isn't worth ke
      the offender list shrink and confirm nothing new broke.
    - **Warn about the 0-byte-stub race.** If the rename lands via a PR merged while an
      Obsidian client is open on the live vault, Obsidian can leave a **0-byte stub at the
-     OLD path** — a harmless working-tree artifact, not data loss; the renamed note is
-     intact in git. Detector: an *empty* `.md` file at an old/renamed path
-     (`find . -name '*.md' -empty`). Fix: delete the stub. Tell the user to expect this.
+     OLD path** — a harmless working-tree artifact (not the dangerous cloud-sync
+     dehydration stubs from AGENTS.md's Sensitive-plane section), not data loss; the
+     renamed note is intact in git. Detector: an *empty* `.md` file at an old/renamed
+     path (`find . -name '*.md' -empty -not -path './.*'`) that is also **not tracked
+     on `main`** (`git ls-files --error-unmatch <path>` fails) — a bare find also lists
+     freshly created blank notes. Fix: delete the stub. Tell the user to expect this.
 
 8. **Maintain the backbone.** Add or refresh the note's entry in `index.md` (link +
    one-line summary) and append to `log.md`

@@ -96,8 +96,12 @@ Title-Case-with-spaces filename is a latent bug.
   while an Obsidian client is open on the live vault, Obsidian can leave a **0-byte
   stub at the OLD path**. It's a harmless working-tree artifact of the
   Obsidian-open-during-git-sync race, not data loss — the renamed note is intact in
-  git with full content. Detector: an *empty* `.md` file at an old/renamed path
-  (`find . -name '*.md' -empty` on the live vault). Fix: delete the stub.
+  git with full content (unlike the cloud-sync *dehydration* stubs warned about in the
+  Sensitive-plane section, these rename stubs are harmless). Detector: an *empty*
+  `.md` file at an old/renamed path (`find . -name '*.md' -empty -not -path './.*'`
+  on the live vault) that is also **not tracked on `main`**
+  (`git ls-files --error-unmatch <path>` fails) — a bare find also lists freshly
+  created blank notes. Fix: delete the stub.
 
 ## Directory map (where things live)
 
@@ -112,7 +116,7 @@ grow in as the vault expands.
 |---|---|---|
 | Vault root + folders you create | The notes (the KB itself) — organize however you like | yours |
 | `index.md` | Catalog of every note (link + one-line summary), the navigation backbone | backbone |
-| `log.md` | Append-only record of ingests/changes | backbone |
+| `log.md` | Append-only record of ingests/changes (old months periodically rolled up by `/vault-dream`) | backbone |
 | `hot.md` | ~500-word recent-context cache agents read first (what changed / active context); refreshed by `/vault-dream`. Sits above `index.md`. | backbone |
 | `assets/` | Where Obsidian drops pasted/embedded images, keeping them out of your note area. Auto-managed — you never touch it. | mechanism |
 | `_sensitive/` | **Gitignored** Sensitive plane: confidential notes + large/sensitive originals (PDFs, datasets) kept off git but first-class in Obsidian. Optionally cloud-backed for durability via `/setup-sensitive-plane`. The pre-commit size + confidential guards point here. (Pre-rename name: `_local/`, still gitignored for back-compat.) | mechanism |
@@ -310,7 +314,9 @@ This KB is maintained like Karpathy's [LLM Wiki](https://gist.github.com/karpath
   `git`/`gh`, writes a `DREAMS.md` review artifact and applies nothing). It **never
   auto-merges** and never writes to `main`; the human reviews the PR. Every proposed change
   carries a one-line rationale + provenance (which session/note drove it).
-- **Privacy.** Learnings are **de-identified** before landing in a tracked note; anything
+- **Privacy.** Learnings are **de-identified** before landing in a tracked note (scoped
+  per the *"Third-party material"* definition above — public, non-confidential names and
+  figures are not redacted); anything
   confidential is routed to `_sensitive/` with `classification: confidential`. The skill
   self-enforces this (the Obsidian Git plugin may use a bundled git that skips the native
   pre-commit guard), with `**/*.private.md` + the pre-commit confidential guard as backstops.
