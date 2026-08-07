@@ -9,6 +9,8 @@
 #      (see AGENTS.md), and a local patch is overwritten by the next update-base.
 # Large/sensitive originals (PDFs, images, datasets) belong in the gitignored `_sensitive/`
 # folder or external storage (e.g. Google Drive) with a small reference note — NOT the repo.
+# After the base guards, every EXECUTABLE file in the optional `.githooks/pre-commit.d/`
+# directory runs too — that's the vault-local extension point update-base never touches.
 #
 # Enable once with:  git config core.hooksPath .githooks   (init-vault.sh does this).
 #
@@ -95,6 +97,10 @@ if [ -z "${BASE_UPDATE:-}" ]; then
     eng=""
     while IFS= read -r -d '' file; do
       case "$file" in
+        # Vault-local extension points — yours, never base-owned (update-base never
+        # overlays them). Listed BEFORE the engine patterns so `.githooks/*` below
+        # doesn't swallow `.githooks/pre-commit.d/*`.
+        .githooks/pre-commit.d/*|.claude/hooks-local/*) ;;
         AGENTS.md|CLAUDE.md|.agents/SKILLS.md|.agents/skill-sources.json|.agents/scripts/*|.claude/hooks/*|.claude/settings.json|.githooks/*|setup/*|SETUP.md|.obsidian/snippets/hide-engine-files.css)
           eng+="  $file"$'\n' ;;
       esac
@@ -140,4 +146,22 @@ if git diff --cached --name-only -z | tr '\0' '\n' | grep -qx '.agents/.base-url
     echo "See AGENTS.md → the .agents/.base-url row in the Directory map." >&2
     exit 1
   fi
+fi
+
+# 5. Vault-local guards (issue #42): run every EXECUTABLE file in the optional
+# .githooks/pre-commit.d/ directory. That directory is a vault-local extension
+# point — update-base never overlays or prunes it — so a derived vault can add
+# its own pre-commit checks (confidential-name scans, note-standard guards, …)
+# that SURVIVE base updates instead of being silently deleted by the overlay.
+# A guard runs with the repo root as cwd; a non-zero exit blocks the commit.
+if [ -d .githooks/pre-commit.d ]; then
+  for guard in .githooks/pre-commit.d/*; do
+    [ -f "$guard" ] && [ -x "$guard" ] || continue
+    if ! "$guard"; then
+      echo "✋ commit blocked — vault-local guard failed: $guard" >&2
+      echo "(Vault-local guards live in .githooks/pre-commit.d/ and are yours — see" >&2
+      echo "AGENTS.md. To override for one commit (rarely needed): git commit --no-verify)" >&2
+      exit 1
+    fi
+  done
 fi

@@ -107,6 +107,7 @@ index.md
 log.md
 hot.md
 llms.txt
+cloud-mcp-deployment-architecture.md
 docs
 plans
 raw
@@ -116,6 +117,11 @@ _sensitive
 .agents/skill-sources.lock.json
 .agents/skill-sources.local.json
 .agents/dream-state
+.agents/.base-url
+.agents/.base-ref
+.agents/.base-sync
+.githooks/pre-commit.d
+.claude/hooks-local
 .agents/agents
 .agents/skills
 .claude/agents

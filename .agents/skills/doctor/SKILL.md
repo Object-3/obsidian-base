@@ -67,8 +67,32 @@ pointers are broken. If the user also installed skills into user-scope, **offer*
 
 ### 4. (Optional) base freshness & sensitive plane
 
-- **Base:** if the user wants upstream engine improvements, point them at `/update-base`
-  (it's an engine change → branch + PR). Don't run it unprompted.
+- **Base:** measure whether this vault's engine is behind the upstream base — one
+  cheap remote call, no fetch, no working-tree mutation:
+
+  ```bash
+  url=$( [ -s .agents/.base-url ] && tr -d '[:space:]' <.agents/.base-url \
+         || echo https://github.com/Object-3/obsidian-base.git )
+  ref=$( [ -s .agents/.base-ref ] && tr -d '[:space:]' <.agents/.base-ref || echo main )
+  remote_sha=$(git ls-remote "$url" "$ref" 2>/dev/null | cut -f1)
+  local_sha=$(cut -d' ' -f1 .agents/.base-sync 2>/dev/null || true)
+  ```
+
+  `.agents/.base-sync` is the stamp `update-base.sh` writes on every run
+  (`<sha> <ref> <iso-timestamp>`). Interpret:
+  - both SHAs non-empty and **equal** → `✓ ok` — engine current as of the stamp's
+    timestamp (report the date, third field of the stamp).
+  - both non-empty and **different** → `⚠ drift` — the base has moved since the last
+    sync; **offer** `/update-base` (engine change → branch + PR, consent-gated as
+    always). Compare **SHAs only** — never `git rev-list --count`: update-base
+    fetches `--depth 1` and template instances share no history with the base, so
+    there is no ancestry to count.
+  - `remote_sha` empty (offline / unreachable base) or `local_sha` empty (no stamp —
+    the vault has never run `/update-base` since the stamp shipped) → **degrade
+    silently**: report the row as `base | unknown (no stamp / offline)` and move on;
+    never fail the doctor over it.
+
+  Don't run `/update-base` unprompted.
 - **Sensitive plane:** if `_sensitive/` is meant to be cloud-backed and its symlink is
   missing/broken, offer `/setup-sensitive-plane` to repair it.
 
