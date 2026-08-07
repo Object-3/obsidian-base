@@ -48,6 +48,38 @@ Then tell the user to **restart their assistant** (quit/reopen Claude Desktop; s
 fresh Claude Code / Codex session) to pick up the rewired connections. A vault is only
 reachable while its Obsidian window is **open**.
 
+**Sub-check: stale `userIgnoreFilters` (wired but unreadable).** A vault can be
+perfectly wired yet still fail MCP reads: vaults created before the #41 fix ship
+`.obsidian/app.json` with `userIgnoreFilters` containing `.agents/`, `.claude/`,
+`.codex/`, and `log.md` — and the Local REST API honors that setting even for
+direct-path reads, so `obsidian_get_file_contents` on `.agents/vault-profile.md`
+returns "File not found" (the exact symptom of the fast-orient flow breaking).
+`update-base` never overlays `.obsidian/`, so these vaults keep the broken filters
+forever unless repaired. For each discovered vault, check:
+
+```bash
+jq -r '(.userIgnoreFilters // [])[]' "<vault>/.obsidian/app.json" \
+  | grep -Fx -e '.agents/' -e '.claude/' -e '.codex/' -e 'log.md'
+```
+
+Any output = stale filters; flag each offending entry. If `app.json` is missing or
+not valid JSON (`jq -e .` fails), just **report** that and move on — don't fix a
+file you can't parse. **Repair (on consent):** remove only those four entries,
+preserving any user-added custom filters:
+
+```bash
+jq '.userIgnoreFilters = ((.userIgnoreFilters // []) - [".agents/", ".claude/", ".codex/", "log.md"])' \
+  "<vault>/.obsidian/app.json" > /tmp/app.json.$$ && mv /tmp/app.json.$$ "<vault>/.obsidian/app.json"
+```
+
+One-line explanation to give the user: Obsidian natively hides dot-folders from the
+graph/search/tag index, so removing these entries pollutes nothing — it only restores
+MCP direct-path reads (and `log.md` appends); `log.md` stays hidden in the file
+explorer via the `hide-engine-files.css` snippet. If the vault is open in Obsidian,
+have the user reload it (or toggle the Local REST API plugin) so the change takes
+effect. The base repo's `.agents/scripts/test-obsidian-config-smoke.sh` encodes the
+same contract.
+
 ### 2. Frontmatter & structure lint
 
 ```bash
