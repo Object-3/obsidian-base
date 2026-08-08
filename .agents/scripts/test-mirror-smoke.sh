@@ -20,9 +20,15 @@
 #   2. install — a locked skill lands in BOTH targets and is recorded owned
 #   3. manifest schema round-trips
 #   4. owned[] is retained across refresh (the freeze-bug guard)
-#   5. --status exit codes (0 up-to-date / 1 stale / 2 not-installed)
+#   5. --status exit codes (contract: 0 clean / 1 mirror stale / 2 not installed /
+#      3 exports stale-or-gone / 4 pin fallback / 5 corrupt lock; lowest wins)
 #   6. --mirror-only works with no network
 #   7. no staging artifacts leak into the scanned skills root (stages live in the parent)
+#   8. --export-zips builds zips offline and records a manifest entry per export
+#   9. --status diffs the export manifest and flags stale zip-imported skills
+#  10. exports survive a mirror refresh, and re-exporting is idempotent (no dupes)
+#  11. a no-longer-vendored skill gets its own status message and prunes on re-export
+#  12. an exports-only manifest reads as mirror-not-installed, not stale/other-vault
 #
 # Exits non-zero if any assertion fails.
 set -uo pipefail
@@ -102,6 +108,74 @@ done
 [ "$root_junk" -eq 0 ] && ok "no temp/stage dirs in skills root after run" || bad "staging leaked into skills root"
 par_junk=$(find "$WORK" -maxdepth 1 -name '.skill-mirror-stage.*' 2>/dev/null | wc -l | tr -d ' ')
 [ "$par_junk" = "0" ] && ok "parent stages swept clean" || bad "stage orphans left in parent dir"
+
+echo "== 8: --export-zips builds zips offline + records a manifest entry per export =="
+# The mock-curl PATH stays irrelevant: exports read only the committed lock + skills.
+EXPORTS="$WORK/exports"
+bash "$SYNC" --export-zips "--surface=test-chat" "--export-dir=$EXPORTS" >/dev/null 2>&1
+[ -f "$EXPORTS/$OWN_SKILL.zip" ] && ok "zip written for '$OWN_SKILL'" || bad "no zip for '$OWN_SKILL'"
+jq -e --arg k "$OWN_SKILL" \
+   '.exports[]? | select(.surface=="test-chat" and .skill==$k) | (.hash | length) > 0 and has("written")' \
+   "$MIRROR_MANIFEST" >/dev/null 2>&1 \
+  && ok "manifest export entry {surface,skill,hash,written} recorded" || bad "export entry missing/incomplete"
+jq -e 'has("owned") and has("lock_hash")' "$MIRROR_MANIFEST" >/dev/null 2>&1 \
+  && ok "mirror fields survive the export write" || bad "export write clobbered the mirror manifest"
+
+echo "== 9: --status flags stale zip exports (re-export and re-upload) =="
+bash "$SYNC" --status >/dev/null 2>&1 && ok "status 0 while exports match" || bad "status not 0 while exports match"
+jq --arg k "$OWN_SKILL" '(.exports[] | select(.skill==$k)).hash = "deadbeef"' \
+   "$MIRROR_MANIFEST" > "$MIRROR_MANIFEST.x" && mv "$MIRROR_MANIFEST.x" "$MIRROR_MANIFEST"
+out="$(bash "$SYNC" --status 2>&1)"; rc=$?
+[ "$rc" -eq 3 ] && ok "status 3 on stale export (exports code)" || bad "status not 3 on stale export (rc=$rc)"
+printf '%s' "$out" | grep -q "re-export and re-upload:.*$OWN_SKILL" \
+  && ok "stale skill named with re-export instruction" || bad "no re-export/re-upload flag for stale skill"
+printf '%s' "$out" | grep -q -- "--export-dir=$EXPORTS" \
+  && ok "remediation includes the recorded --export-dir" || bad "recorded export dir not in remediation"
+# Precedence: mirror stale (1) + export stale (3) must report BOTH and exit 1 (lowest).
+jq '.lock_hash = "deadbeef"' "$MIRROR_MANIFEST" > "$MIRROR_MANIFEST.x" && mv "$MIRROR_MANIFEST.x" "$MIRROR_MANIFEST"
+out="$(bash "$SYNC" --status 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && ok "combined mirror+export staleness exits 1 (lowest code)" || bad "combined staleness rc=$rc, want 1"
+printf '%s' "$out" | grep -q "re-export and re-upload" \
+  && ok "export staleness still reported alongside the mirror's" || bad "export staleness masked by mirror staleness"
+
+echo "== 10: exports survive a mirror refresh; re-export is idempotent =="
+bash "$SYNC" --export-zips "--surface=test-chat" "--export-dir=$EXPORTS" >/dev/null 2>&1  # heal the tamper
+n1="$(jq '.exports | length' "$MIRROR_MANIFEST")"
+bash "$SYNC" --export-zips "--surface=test-chat" "--export-dir=$EXPORTS" >/dev/null 2>&1
+n2="$(jq '.exports | length' "$MIRROR_MANIFEST")"
+[ "$n1" = "$n2" ] && ok "re-export keeps a stable entry count ($n1)" || bad "re-export grew exports: $n1 -> $n2 (dupe bug)"
+jq -e '.exports | group_by([.surface, .skill]) | all(length == 1)' "$MIRROR_MANIFEST" >/dev/null 2>&1 \
+  && ok "no duplicate (surface, skill) entries" || bad "duplicate export entries present"
+bash "$SYNC" --mirror-only >/dev/null 2>&1
+n3="$(jq '.exports | length' "$MIRROR_MANIFEST" 2>/dev/null || echo 0)"
+[ "$n3" = "$n1" ] && ok "exports survive a mirror refresh" || bad "mirror refresh dropped exports: $n1 -> $n3"
+bash "$SYNC" --status >/dev/null 2>&1 && ok "status 0 after mirror+export round-trip" || bad "status not 0 after round-trip"
+
+echo "== 11: no-longer-vendored skill: own message, prunes on re-export =="
+jq '.exports += [{surface:"test-chat", skill:"zz-not-vendored", hash:"x", dir:"", written:"2020-01-01T00:00:00Z"}]' \
+   "$MIRROR_MANIFEST" > "$MIRROR_MANIFEST.x" && mv "$MIRROR_MANIFEST.x" "$MIRROR_MANIFEST"
+out="$(bash "$SYNC" --status 2>&1)"; rc=$?
+[ "$rc" -eq 3 ] && ok "status 3 on a no-longer-vendored export" || bad "status not 3 on gone export (rc=$rc)"
+printf '%s' "$out" | grep -q "no longer vendored.*zz-not-vendored" \
+  && ok "gone skill gets the delete-the-zip message" || bad "gone skill not distinguished from stale"
+printf '%s' "$out" | grep -q "re-export and re-upload:.*zz-not-vendored" \
+  && bad "gone skill wrongly listed as re-exportable" || ok "gone skill not listed under re-export"
+bash "$SYNC" --export-zips "--surface=test-chat" "--export-dir=$EXPORTS" >/dev/null 2>&1
+jq -e '.exports | map(.skill) | index("zz-not-vendored") | not' "$MIRROR_MANIFEST" >/dev/null 2>&1 \
+  && ok "gone entry pruned on the next --export-zips" || bad "gone entry survived re-export (status wedged)"
+bash "$SYNC" --status >/dev/null 2>&1 && ok "status back to 0 after prune" || bad "status still nonzero after prune"
+
+echo "== 12: exports-only manifest reads as mirror-not-installed =="
+rm -f "$MIRROR_MANIFEST"
+bash "$SYNC" --export-zips "--surface=test-chat" "--export-dir=$EXPORTS" >/dev/null 2>&1
+out="$(bash "$SYNC" --status 2>&1)"; rc=$?
+[ "$rc" -eq 2 ] && ok "status 2 (not installed) with fresh exports only" || bad "status rc=$rc on exports-only manifest"
+printf '%s' "$out" | grep -q "not installed" \
+  && ok "mirror portion reported as not installed" || bad "exports-only manifest not reported as not-installed"
+printf '%s' "$out" | grep -q "DIFFERENT vault" \
+  && bad "bogus different-vault warning on exports-only manifest" || ok "no bogus different-vault warning"
+printf '%s' "$out" | grep -q "test-chat: .*up to date" \
+  && ok "zip exports still checked alongside" || bad "zip exports not checked on exports-only manifest"
 
 echo
 echo "smoke: $pass passed, $fail failed"

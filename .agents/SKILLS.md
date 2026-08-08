@@ -18,7 +18,8 @@ Built-in / official cloud-native skills are left alone.
 ├── scripts/sync-skills.sh    the sync script
 ├── skill-sources.json        BASE-OWNED curated sources (refreshed by update-base)
 ├── skill-sources.local.json  THIS VAULT'S extra sources (never synced; optional)
-└── skill-sources.lock.json   bookkeeping for clean re-sync
+└── skill-sources.lock.json   vendored-set record + per-source provenance:
+                              {skills, agents, sources:[{name,repo,ref,ref_type,fetched_sha}]}
 .claude/skills  -> ../.agents/skills    (pointer for Claude Code)
 .codex/skills   -> ../.agents/skills    (pointer for OpenAI Codex)
 .claude/agents  -> ../.agents/agents
@@ -48,7 +49,13 @@ local entries winning on a name collision (so you can override a base source).
    ```
    - `skillsPath` — directory in the repo under which each `*/SKILL.md` lives (default `skills`).
    - `include` — optional allow-list of skill directory names (cherry-pick across nested folders).
-   - `agentsPath` / `ref` — optional (`*.md` agents; branch defaults to `main`→`master`).
+   - `agentsPath` — optional (`*.md` agents).
+   - `ref` — optional **pin**: a branch, a **tag**, or a full **commit SHA** all work
+     (tags are tried before same-named branches, matching git's refname precedence; a
+     40-hex ref fetches the commit directly). Unset defaults to `main`→`master`. If an
+     explicitly-pinned ref can't be fetched, the sync falls back to `main`/`master`
+     with a loud **PIN FALLBACK** warning and records a `fallback_from` breadcrumb in
+     the lock, which `sync-skills.sh --status` surfaces — a pin never silently unpins.
 2. Run `.agents/scripts/sync-skills.sh`.
 3. Commit the changes under `.agents/` (and the pointer dirs).
 
@@ -125,8 +132,18 @@ untouched.
   `personal > project`); across multiple vaults the mirror is last-writer-wins, which
   the `/install-skills` status check (`sync-skills.sh --status`) flags via the manifest's
   recorded source hash + vault path.
-- **Not for chat surfaces:** claude.ai chat takes skills only as a manual zip upload;
-  ChatGPT has none. The mirror targets the scriptable CLI tools only.
+- **`--status` exit contract:** `0` all clean · `1` mirror stale · `2` mirror not
+  installed / nothing to compare · `3` chat-surface zip export(s) stale or no longer
+  vendored · `4` pinned source off its pin (fell back on the last sync) · `5` cannot
+  evaluate (lock exists but is corrupt). Every applicable condition prints; the exit
+  code is the **lowest** applicable nonzero one (most actionable first).
+- **Not for chat surfaces:** claude.ai chat — including **Claude Desktop's regular
+  chat window** (the Code tab IS reached, the chat window is NOT) — takes skills only
+  as a manual zip upload (Settings → Capabilities); ChatGPT has none. The mirror
+  targets the scriptable CLI tools only. For chat surfaces,
+  `sync-skills.sh --export-zips --surface=<name>` builds the zips and records each
+  export in the mirror manifest, and `--status` later flags which uploaded zips have
+  gone stale ("re-export and re-upload: …") — the upload itself stays manual.
 
 See [`docs/knowledge/userscope-skill-mirror.md`](../docs/knowledge/userscope-skill-mirror.md).
 
