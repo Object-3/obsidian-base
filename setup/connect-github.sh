@@ -50,8 +50,58 @@ ask OWNER "GitHub owner (your username or an org)" "$DEFAULT_OWNER"
 DEFAULT_NAME="$(lib_mcp_label "$(basename "$PWD")")"
 ask REPO_NAME "Repository name" "$DEFAULT_NAME"
 ask VISIBILITY "Visibility (private/public)" "private"
+# Visibility guard (PR #75 review): the vault is private notes — a PUBLIC repo
+# publishes every tracked note to anyone on the internet. One mistyped prompt
+# answer must not do that: unrecognized values fall back to private, and
+# 'public' requires typing the word a second time. A non-interactive run (env
+# VISIBILITY=public) can't confirm, so it falls back to private too.
+VISIBILITY="$(printf '%s' "$VISIBILITY" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+case "$VISIBILITY" in
+  private) ;;
+  public)
+    say "⚠ PUBLIC repo requested — every tracked note in this vault would be visible to anyone."
+    if [ -t 0 ]; then
+      confirm=""
+      read -r -p "Type 'public' again to confirm, anything else for private: " confirm || true
+      if [ "$confirm" = "public" ]; then say "Confirmed: creating a PUBLIC repo."
+      else VISIBILITY=private; say "Not confirmed — creating a PRIVATE repo."; fi
+    else
+      VISIBILITY=private
+      say "Non-interactive run can't confirm 'public' — creating a PRIVATE repo. Re-run interactively to publish."
+    fi ;;
+  *) say "Unrecognized visibility '${VISIBILITY:-}' — creating a PRIVATE repo."; VISIBILITY=private ;;
+esac
 
 # 3. create + push, set as origin.
+# Guard (issue #37): never push the private vault to the BASE template. A vault
+# that was cloned straight from the base (or a legacy scaffold) can still carry
+# an 'origin' pointing at the public template — pushing there would publish the
+# user's private notes, and once auto-sync turns on below, Obsidian Git would
+# keep merging the template into the vault. Drop that origin (and any base
+# tracking) so the create-your-own-repo path below runs instead; update-base
+# still reaches the base via its own ephemeral remote. Base identity comes from
+# lib_base_url_kind (on-disk pinned state only — never env, never a remote's
+# name). A match on the .agents/.base-url fork pin could be the user's OWN
+# private fork serving as the backup, so that one is only removed on an
+# explicit yes; the public default is removed outright.
+if git remote get-url origin >/dev/null 2>&1 \
+   && origin_base_kind="$(lib_base_url_kind "$(git remote get-url origin)" .)"; then
+  drop_origin=""
+  if [ "$origin_base_kind" = default ]; then
+    say "'origin' points at the PUBLIC base template ($(git remote get-url origin)) — removing it so your vault is never pushed there."
+    drop_origin=1
+  else
+    ans=""
+    read -r -p "'origin' ($(git remote get-url origin)) matches your .agents/.base-url fork pin — it may be your own fork BACKUP. Remove it and create a fresh repo instead? [y/N]: " ans || true
+    case "$ans" in [Yy]*) drop_origin=1 ;; *) say "Keeping 'origin' as-is; it will be pushed to." ;; esac
+  fi
+  if [ -n "$drop_origin" ]; then
+    # Tolerant: errors only when no upstream is configured at all (and clears
+    # the config even when the remote-tracking ref was never fetched).
+    git branch --unset-upstream 2>/dev/null || true
+    git remote remove origin
+  fi
+fi
 if git remote get-url origin >/dev/null 2>&1; then
   say "An 'origin' already exists ($(git remote get-url origin)); pushing to it."
   push_with_retry origin "$(git branch --show-current)"

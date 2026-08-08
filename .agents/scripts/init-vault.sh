@@ -65,6 +65,18 @@ sub "{{PRIMARY_TAG}}"   "$PRIMARY_TAG"
 echo
 echo "Profile set: name='$VAULT_NAME'  tag='$PRIMARY_TAG'  (see .agents/vault-profile.md)"
 
+# Guard (issue #37): a vault created by cloning the base directly (or a legacy
+# scaffold) can leave its branch TRACKING the public base template — Obsidian Git
+# would then auto-merge the template into the personal vault forever. Init is the
+# "make it yours" step, so detach any base tracking / standing base-URL remote now
+# (quiet no-op when already clean; the base stays reachable via update-base's
+# ephemeral remote). Runs AFTER personalization on purpose: the doctor treats an
+# unpersonalized {{VAULT_NAME}} checkout as the base repo itself and skips.
+if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+   && [ -x "$ROOT/.agents/scripts/vault-git-doctor.sh" ]; then
+  "$ROOT/.agents/scripts/vault-git-doctor.sh" --fix-tracking || true
+fi
+
 # Seed the self-improvement backbone (the /vault-dream loop). BOTH are created only if
 # ABSENT, so re-running init on a live vault never resets an advanced watermark (which
 # otherwise advances only when the dream's PR merges) or clobbers a populated hot.md. A

@@ -125,6 +125,75 @@ persist_base_url() {
   printf '%s\n' "$url" > "$dest"
 }
 
+# Normalize a git URL to bare lowercase host/path for identity comparison.
+# Handles: scheme (https/http/ssh/git), userinfo, an explicit port
+# (ssh://host:22/…), scp-style with AND without a user (git@host:o/r, host:o/r),
+# trailing slashes (any number) and .git, case, and GitHub's documented SSH
+# fallback host ssh.github.com (→ github.com). So
+#   https://github.com/Object-3/obsidian-base.git
+#   git@github.com:Object-3/obsidian-base
+#   ssh://git@github.com:22/Object-3/obsidian-base.git
+#   ssh://git@ssh.github.com:443/Object-3/obsidian-base.git//
+# all compare equal. Failing to normalize a form here fails OPEN (a base-URL
+# remote dodges detection), so keep this exhaustive.
+lib_norm_git_url() {
+  local u; u="$(printf '%s' "$1" | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')"
+  while [ "${u%/}" != "$u" ]; do u="${u%/}"; done
+  u="${u%.git}"
+  while [ "${u%/}" != "$u" ]; do u="${u%/}"; done
+  u="${u#ssh://}"; u="${u#git://}"; u="${u#https://}"; u="${u#http://}"
+  # Userinfo: strip only an @ that occurs before the first slash (the authority).
+  local head="${u%%/*}"
+  case "$head" in *@*) u="${u#*@}" ;; esac
+  # One colon can remain in the authority: either an explicit port
+  # (host:22/path → host/path) or scp-style (host:owner/repo → host/owner/repo).
+  case "$u" in
+    *:*)
+      local host="${u%%:*}" rest="${u#*:}" seg
+      seg="${rest%%/*}"
+      case "$seg" in
+        '') u="$host" ;;                                    # dangling "host:"
+        *[!0-9]*) u="$host/$rest" ;;                        # scp-style path
+        *) case "$rest" in
+             */*) u="$host/${rest#*/}" ;;                   # port + path
+             *)   u="$host" ;;                              # port only
+           esac ;;
+      esac ;;
+  esac
+  case "$u" in ssh.github.com/*) u="github.com/${u#ssh.github.com/}" ;; esac
+  printf '%s\n' "$u"
+}
+
+# Classify <url> against the BASE template identity — used to keep a personal
+# vault's own remotes/tracking off the base (issue #37; the base is only ever
+# reached via update-base's ephemeral remote). Prints the match kind and
+# returns 0 on a match, 1 otherwise:
+#   default → the public template (DEFAULT_BASE_REPO_URL)
+#   pin     → the fork/custom base pinned in .agents/.base-url
+#
+# DELIBERATELY narrower than resolve_base_url: identity for DESTRUCTIVE
+# decisions (removing a remote, detaching tracking) comes from ON-DISK PINNED
+# STATE ONLY — never the BASE_REPO_URL/BASE_REPO env (an ambient export equal
+# to the user's origin would weaponize an auto-fix) and never the legacy
+# `base` remote leg (a remote merely NAMED base but pointing at the user's
+# PRIVATE repo must not classify their backup as "the base").
+lib_base_url_kind() {
+  local url="$1" root="${2:-.}" n pin
+  n="$(lib_norm_git_url "$url")"
+  [ -n "$n" ] || return 1
+  if [ "$n" = "$(lib_norm_git_url "$DEFAULT_BASE_REPO_URL")" ]; then
+    echo default; return 0
+  fi
+  if [ -s "$root/.agents/.base-url" ]; then
+    pin="$(grep -m1 -v '^[[:space:]]*$' "$root/.agents/.base-url" 2>/dev/null || true)"
+    pin="$(printf '%s' "$pin" | tr -d '[:space:]')"
+    if [ -n "$pin" ] && [ "$n" = "$(lib_norm_git_url "$pin")" ]; then
+      echo pin; return 0
+    fi
+  fi
+  return 1
+}
+
 # Vault name -> filesystem/label slug (lowercase, [a-z0-9-] only). Also the
 # basis for the per-vault MCP label `obsidian-<slug>`.
 lib_slugify() { printf '%s' "$1" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-'; }

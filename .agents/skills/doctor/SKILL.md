@@ -97,7 +97,52 @@ Run this if the vendored skills are stale or `.claude/skills` / `.codex/skills`
 pointers are broken. If the user also installed skills into user-scope, **offer**
 `/install-skills` to refresh the global copies (they don't auto-update).
 
-### 4. (Optional) base freshness & sensitive plane
+### 4. Live-vault git sync health (base tracking + rename stubs)
+
+```bash
+.agents/scripts/vault-git-doctor.sh      # CHECK: reports drift, changes nothing (exit 3 = drift)
+```
+
+One script, two findings (both artifacts of Obsidian Git syncing the live vault):
+
+- **Base tracking (issue #37):** the vault's branch tracks — or a standing remote
+  points at — the **base template repo** (the public default `Object-3/obsidian-base`,
+  or the fork pinned in `.agents/.base-url`; identity is matched by URL from on-disk
+  pinned state only — a remote merely *named* `base` that points at the user's own
+  repo is never flagged). With Obsidian Git's auto-pull+merge on, that continuously
+  merges the public template into the personal vault (conflict-copy junk in history,
+  content-bleed risk). The base must only ever be reached via `update-base`'s
+  ephemeral remote.
+- **0-byte rename stubs (issue #43):** empty **untracked** `.md` files in the working
+  tree at paths **not present on the checked-out branch** — the signature of Obsidian
+  being open while a rename/move merge landed. Content is safe in git; the stubs are
+  junk. Files tracked in the index, 0-byte files younger than ~10 minutes (a
+  brand-new note starts 0-byte), `_sensitive/`, `raw/`, and dot-folders are never
+  flagged.
+- **Unbacked vault (informational, never drift):** a personalized vault with **no git
+  remote at all** gets a recurring `· backup:` line — it exists only on this machine
+  and nothing is backing it up (the state a `--fix-tracking` that removed the only
+  remote leaves behind). Relay it to the user; if local-only isn't deliberate, offer
+  `/connect-github`.
+
+**Repair (on consent, per finding — they're independent):**
+```bash
+.agents/scripts/vault-git-doctor.sh --fix-tracking                 # detach base tracking + remove base-URL remotes
+.agents/scripts/vault-git-doctor.sh --fix-stubs <reported paths…>  # delete exactly the stubs the user reviewed
+```
+For stubs, **pass the paths from the report** (the report prints the exact command) —
+that way the fix deletes only the list the user approved, re-validating each path,
+instead of re-scanning blind. Notes on `--fix-tracking`: a match on the public
+default is removed outright; a match on the `.base-url` **fork pin** asks for
+confirmation first (it could be the user's own fork backup) and is skipped in
+non-interactive runs. If it removed an `origin`, it re-points tracking to a
+surviving real `origin` when one exists, turns Obsidian Git auto-sync back **off**
+when no remotes remain, and either way offer `setup/connect-github.sh` to connect
+the user's **own** backup repo. (An unpersonalized checkout — the `vault_name:`
+field still `{{VAULT_NAME}}` — i.e. the base repo itself, is never flagged or fixed:
+`origin` = base is legitimate there.)
+
+### 5. (Optional) base freshness & sensitive plane
 
 - **Base:** measure whether this vault's engine is behind the upstream base — one
   cheap remote call, no fetch, no working-tree mutation:
