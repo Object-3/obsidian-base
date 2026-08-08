@@ -154,7 +154,12 @@ fi
 # its own pre-commit checks (confidential-name scans, note-standard guards, …)
 # that SURVIVE base updates instead of being silently deleted by the overlay.
 # A guard runs with the repo root as cwd; a non-zero exit blocks the commit.
-if [ -d .githooks/pre-commit.d ]; then
+# Skipped during the sanctioned BASE_UPDATE=1 overlay commit: that commit stages
+# incoming BASE content, which vault guards were never written to judge — a guard
+# tripping on it would block the update, and the --no-verify escape in the failure
+# text would disable ALL guards, not just the tripping one. Vault content commits
+# (everything else) always run the guards.
+if [ -z "${BASE_UPDATE:-}" ] && [ -d .githooks/pre-commit.d ]; then
   for guard in .githooks/pre-commit.d/*; do
     [ -f "$guard" ] && [ -x "$guard" ] || continue
     if ! "$guard"; then

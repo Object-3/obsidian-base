@@ -26,8 +26,13 @@
 #      fatigue), a surviving marked guard raises NO false drop-warning, and the
 #      no-op run announces the staged .base-sync stamp.
 #   6. .githooks/pre-commit executes the guards in .githooks/pre-commit.d/:
-#      passing guard → commit allowed; failing guard → blocked; non-executable
-#      file → ignored.
+#      passing guard → commit allowed; failing guard → blocked; failing guard
+#      under BASE_UPDATE=1 → skipped (the sanctioned overlay commit); non-
+#      executable file → ignored.
+#
+# NOT covered (offline limits): the .claude/hooks-local/ + settings.local.json
+# mechanism rests on Claude Code's documented additive hooks merge across settings
+# files — asserted from docs, not exercisable without the real settings loader.
 #
 # Fully offline: throwaway git repos in a temp dir, local-path fetches only.
 #
@@ -227,6 +232,16 @@ else
   grep -q "vault-local guard failed: .githooks/pre-commit.d/20-fail.sh" "$tmp/hook2.log" \
     && ok "failing vault-local guard → commit blocked, guard named" \
     || bad "hook blocked but did not name the failing guard"
+fi
+
+# failing guard + BASE_UPDATE=1 → guards SKIPPED: the sanctioned overlay commit
+# stages incoming base content vault guards were never written to judge, and a
+# guard tripping there would push users to --no-verify (which disables ALL guards)
+if ( cd "$hookrepo" && BASE_UPDATE=1 ./.githooks/pre-commit ) >"$tmp/hook2b.log" 2>&1; then
+  ok "vault-local guards are skipped during a BASE_UPDATE=1 overlay commit"
+else
+  sed 's/^/     | /' "$tmp/hook2b.log"
+  bad "failing vault-local guard blocked the sanctioned BASE_UPDATE=1 commit"
 fi
 
 # non-executable file → ignored
