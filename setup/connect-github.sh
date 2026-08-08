@@ -50,6 +50,27 @@ ask OWNER "GitHub owner (your username or an org)" "$DEFAULT_OWNER"
 DEFAULT_NAME="$(lib_mcp_label "$(basename "$PWD")")"
 ask REPO_NAME "Repository name" "$DEFAULT_NAME"
 ask VISIBILITY "Visibility (private/public)" "private"
+# Visibility guard (PR #75 review): the vault is private notes — a PUBLIC repo
+# publishes every tracked note to anyone on the internet. One mistyped prompt
+# answer must not do that: unrecognized values fall back to private, and
+# 'public' requires typing the word a second time. A non-interactive run (env
+# VISIBILITY=public) can't confirm, so it falls back to private too.
+VISIBILITY="$(printf '%s' "$VISIBILITY" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+case "$VISIBILITY" in
+  private) ;;
+  public)
+    say "⚠ PUBLIC repo requested — every tracked note in this vault would be visible to anyone."
+    if [ -t 0 ]; then
+      confirm=""
+      read -r -p "Type 'public' again to confirm, anything else for private: " confirm || true
+      if [ "$confirm" = "public" ]; then say "Confirmed: creating a PUBLIC repo."
+      else VISIBILITY=private; say "Not confirmed — creating a PRIVATE repo."; fi
+    else
+      VISIBILITY=private
+      say "Non-interactive run can't confirm 'public' — creating a PRIVATE repo. Re-run interactively to publish."
+    fi ;;
+  *) say "Unrecognized visibility '${VISIBILITY:-}' — creating a PRIVATE repo."; VISIBILITY=private ;;
+esac
 
 # 3. create + push, set as origin.
 # Guard (issue #37): never push the private vault to the BASE template. A vault

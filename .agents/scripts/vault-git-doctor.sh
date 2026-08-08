@@ -26,6 +26,12 @@
 #   pin could be a legitimate private-fork backup, so it is only removed after
 #   an interactive yes (skipped with a warning in non-interactive runs).
 #
+# CHECK 1b — unbacked vault (report only, PR #75 review). A personalized vault
+#   with NO git remote at all gets an informational '· backup:' line on every
+#   report run — e.g. after --fix-tracking removed a fork-as-base backup, when
+#   pushes stop by design with only a one-time message. Never a drift exit:
+#   a deliberately local-only vault is legitimate; the state just stays visible.
+#
 # CHECK 2 — 0-byte rename stubs (issue #43). When a rename/move merge lands
 #   while Obsidian is open on the live vault, Obsidian can leave a 0-byte file
 #   at the OLD path. Signature: an EMPTY, UNTRACKED .md file in the working
@@ -215,6 +221,19 @@ if [ -n "$FIX_TRACKING" ]; then
       fi
     fi
   fi
+fi
+
+# ---- check 1b: unbacked vault — no remote at all (report only) -------------
+# After a --fix-tracking removes a vault's ONLY remote (e.g. a repaired
+# fork-as-base backup), pushes stop by design — with only a one-time console
+# message. Nothing else ever re-surfaces "this vault is local-only", so the
+# doctor does, on every report run. Informational, NOT drift (no exit 3): a
+# deliberately local-only vault is legitimate; the point is that the state is
+# seen recurringly, never silent. Skipped for template checkouts.
+if [ -n "$REPORT" ] && [ -z "$TEMPLATE_CHECKOUT" ] && [ -z "$(git remote)" ]; then
+  echo "· backup: this vault has NO git remote — it exists only on this machine, nothing is"
+  echo "    backing it up, and Obsidian Git has nowhere to push. If that's deliberate, fine;"
+  echo "    otherwise connect your own repo: setup/connect-github.sh (or /connect-github)."
 fi
 
 # ---- check 2: 0-byte, untracked .md stubs missing from the current branch --

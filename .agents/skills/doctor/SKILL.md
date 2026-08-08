@@ -87,6 +87,11 @@ One script, two findings (both artifacts of Obsidian Git syncing the live vault)
   junk. Files tracked in the index, 0-byte files younger than ~10 minutes (a
   brand-new note starts 0-byte), `_sensitive/`, `raw/`, and dot-folders are never
   flagged.
+- **Unbacked vault (informational, never drift):** a personalized vault with **no git
+  remote at all** gets a recurring `· backup:` line — it exists only on this machine
+  and nothing is backing it up (the state a `--fix-tracking` that removed the only
+  remote leaves behind). Relay it to the user; if local-only isn't deliberate, offer
+  `/connect-github`.
 
 **Repair (on consent, per finding — they're independent):**
 ```bash

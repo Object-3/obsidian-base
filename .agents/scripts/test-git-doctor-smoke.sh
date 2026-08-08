@@ -44,6 +44,10 @@
 #       committed on master (HEAD) is not flagged even though main lacks it
 #   11. connect-github.sh guard: a base-pointing 'origin' is removed and the
 #       create-your-own-repo path is reached (gh stubbed)
+#   12. unbacked-vault note: zero remotes → informational '· backup:' line on
+#       every report, no drift exit; silent once a remote exists
+#   13. connect-github.sh visibility guard: non-interactive VISIBILITY=public
+#       and a typo'd value both fall back to a PRIVATE repo
 #
 # Exits non-zero if any assertion fails.
 set -uo pipefail
@@ -335,6 +339,46 @@ if printf '%s' "$out" | grep -q "PUBLIC base template" \
   ok "connect-github guard removed base origin and reached the create path"
 else
   bad "connect-github guard wrong (exit $rc): $out"
+fi
+
+# ---- 12. unbacked-vault note (check 1b) ------------------------------------
+# Zero remotes → the report surfaces "local-only, nothing backing it up" on
+# every run — informational only, never drift (exit stays 0 on an otherwise
+# clean vault). A vault WITH a remote must not print it.
+V12="$WORK/v12"; mk_vault "$V12"
+out=$(doctor "$V12"); rc=$?
+if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q '· backup: this vault has NO git remote'; then
+  ok "zero-remote vault surfaces the unbacked note without drift (exit 0)"
+else
+  bad "unbacked note missing or drift exit (exit $rc): $out"
+fi
+( cd "$V12" && git remote add origin https://github.com/someone/private-vault.git )
+out=$(doctor "$V12"); rc=$?
+if [ "$rc" -eq 0 ] && ! printf '%s' "$out" | grep -q '· backup:'; then
+  ok "vault with a remote does not print the unbacked note"
+else
+  bad "unbacked note printed despite a remote (exit $rc): $out"
+fi
+
+# ---- 13. connect-github.sh visibility guard (gh stubbed) -------------------
+# VISIBILITY=public in a NON-interactive run cannot be confirmed → falls back
+# to private; a typo'd value falls back too. (Interactive re-type path needs a
+# tty, so the non-interactive fallback is what's assertable here.)
+V13="$WORK/v13"; mk_vault "$V13"
+cp "$CONNECT_SRC" "$V13/setup/connect-github.sh"; chmod +x "$V13/setup/connect-github.sh"
+out=$( cd "$V13" && PATH="$WORK/bin:$PATH" VISIBILITY=public OWNER=o REPO_NAME=r ./setup/connect-github.sh </dev/null 2>&1 ); rc=$?
+if printf '%s' "$out" | grep -q "can't confirm 'public'" \
+   && printf '%s' "$out" | grep -q "(private)"; then
+  ok "non-interactive VISIBILITY=public falls back to a private repo"
+else
+  bad "public-visibility fallback wrong (exit $rc): $out"
+fi
+out=$( cd "$V13" && PATH="$WORK/bin:$PATH" VISIBILITY=Pulbic OWNER=o REPO_NAME=r ./setup/connect-github.sh </dev/null 2>&1 ); rc=$?
+if printf '%s' "$out" | grep -q "Unrecognized visibility" \
+   && printf '%s' "$out" | grep -q "(private)"; then
+  ok "typo'd visibility falls back to a private repo"
+else
+  bad "typo'd-visibility fallback wrong (exit $rc): $out"
 fi
 
 echo

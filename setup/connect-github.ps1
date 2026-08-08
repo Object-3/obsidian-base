@@ -26,6 +26,19 @@ $Owner = Read-Host "GitHub owner (your username or an org) [$defaultOwner]"; if 
 $defaultName = Split-Path $root -Leaf
 $Repo = Read-Host "Repository name [$defaultName]"; if (-not $Repo) { $Repo = $defaultName }
 $Vis = Read-Host "Visibility (private/public) [private]"; if (-not $Vis) { $Vis = "private" }
+# Visibility guard (PR #75 review): the vault is private notes -- a PUBLIC repo
+# publishes every tracked note. Unrecognized values fall back to private;
+# 'public' requires typing the word a second time. Mirrors connect-github.sh.
+$Vis = $Vis.Trim().ToLower()
+if ($Vis -eq "public") {
+  Say "! PUBLIC repo requested - every tracked note in this vault would be visible to anyone."
+  $confirm = Read-Host "Type 'public' again to confirm, anything else for private"
+  if ($confirm -eq "public") { Say "Confirmed: creating a PUBLIC repo." }
+  else { $Vis = "private"; Say "Not confirmed - creating a PRIVATE repo." }
+} elseif ($Vis -ne "private") {
+  Say "Unrecognized visibility '$Vis' - creating a PRIVATE repo."
+  $Vis = "private"
+}
 
 # Retry a push once with a larger post buffer if the first attempt fails -- works
 # around a transient "RPC failed; HTTP 400 ... unexpected disconnect while reading

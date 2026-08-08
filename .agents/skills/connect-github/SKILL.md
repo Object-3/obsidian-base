@@ -47,7 +47,10 @@ Ask, or infer from context, whether the repo should live under:
 
 **Visibility defaults to private** — keep it that way unless the user explicitly wants
 a public repo (rare; the vault's Shareable-plane content is still theirs even if
-public — `_sensitive/` never reaches git regardless).
+public — `_sensitive/` never reaches git regardless). The script self-guards:
+`public` must be re-typed at an interactive confirmation prompt, unrecognized
+values fall back to private, and a non-interactive `VISIBILITY=public` run also
+falls back to private (publishing always requires the interactive confirmation).
 
 ## 2. Repo naming (parity with the MCP connection)
 
