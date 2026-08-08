@@ -828,7 +828,15 @@ for d in sorted(os.listdir(skills_dir)):
     m = re.search(r'^description:\s*(.+?)\s*$', fm, re.M | re.S)
     if m:
         desc = m.group(1).strip().strip('"\'')
-        desc = re.split(r'(?<=[.!?])\s', desc.replace("\n", " "))[0]
+        # The first sentence is normally the whole "what it is"; the rest is trigger
+        # phrasing ("Use when the user says ...") that would bloat the table. But a
+        # short lead sentence is a fragment, not a summary -- wait-what's "Stop." said
+        # nothing -- so keep absorbing sentences until the row is actually informative.
+        parts = re.split(r'(?<=[.!?])\s', desc.replace("\n", " "))
+        desc = parts[0]
+        for nxt in parts[1:]:
+            if len(desc) >= 40: break
+            desc = desc + " " + nxt
         if len(desc) > 240: desc = desc[:237].rstrip() + "..."
     rows.append((d, name, desc))
 ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")

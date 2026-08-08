@@ -59,6 +59,7 @@
     "social",
     "teach",
     "video",
+    "wait-what",
     "writing-beats",
     "writing-for-agents",
     "writing-fragments",
@@ -70,5 +71,28 @@
     "past-work-researcher.md",
     "stale-knowledge-checker.md",
     "strategic-alignment-reviewer.md"
+  ],
+  "sources": [
+    {
+      "name": "compound-knowledge",
+      "repo": "EveryInc/compound-knowledge-plugin",
+      "ref": "main",
+      "ref_type": "branch",
+      "fetched_sha": "766942e9eaee5204adbfe180f1d0651ffecf2575"
+    },
+    {
+      "name": "corey-haines-marketing",
+      "repo": "coreyhaines31/marketingskills",
+      "ref": "main",
+      "ref_type": "branch",
+      "fetched_sha": "7868cb9251fad80a73d26e488a5ad5f6c4a9f335"
+    },
+    {
+      "name": "matt-pocock",
+      "repo": "mattpocock/skills",
+      "ref": "main",
+      "ref_type": "branch",
+      "fetched_sha": "84fdeffd12f2ee307994d1eb6feb48173b6e0502"
+    }
   ]
 }

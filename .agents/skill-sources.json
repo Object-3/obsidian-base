@@ -20,9 +20,10 @@
         "grilling",
         "handoff",
         "teach",
+        "wait-what",
         "writing-for-agents"
       ],
-      "note": "Matt Pocock's KNOWLEDGE-WORK / WRITING / OBSIDIAN skills only. His engineering set is intentionally excluded — if needed it belongs in a separate code-focused vault. 'include' cherry-picks specific skill dirs across his in-progress/ and productivity/ folders. 2026-08-06: upstream removed 'edit-article' and 'decision-mapping' (no successor), and renamed 'writing-great-skills' -> 'writing-for-agents' (same thesis, broadened to cover AGENTS.md/CLAUDE.md) — include follows the rename. NOTE: sync-skills.sh does not warn when an 'include' entry no longer exists upstream, so a stale name here fails silently; re-check this list when a skill disappears from INDEX.md."
+      "note": "Matt Pocock's KNOWLEDGE-WORK / WRITING / OBSIDIAN skills only. His engineering set is intentionally excluded — if needed it belongs in a separate code-focused vault. 'include' cherry-picks specific skill dirs across his in-progress/ and productivity/ folders. 2026-08-06: upstream removed 'edit-article' and 'decision-mapping' (no successor), and renamed 'writing-great-skills' -> 'writing-for-agents' (same thesis, broadened to cover AGENTS.md/CLAUDE.md) — include follows the rename. 2026-08-07: added 'wait-what' (productivity/) — a one-line, user-invoked-only (disable-model-invocation) skill that asks the agent to re-pitch an explanation that did not land, in Simplified Technical English. NOTE: sync-skills.sh does not warn when an 'include' entry no longer exists upstream, so a stale name here fails silently; re-check this list when a skill disappears from INDEX.md."
     },
     {
       "name": "corey-haines-marketing",
