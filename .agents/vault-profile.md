@@ -33,6 +33,13 @@ controls how widely it looks for sessions:
   `this-checkout` and nothing changes. The watermark (`.agents/dream-state`) advances only
   when the dream's PR is merged/applied, so an abandoned run safely reconsiders those
   sessions next time.
+- **`dream_project_slug`** (frontmatter, optional — absent by default) — Claude Code keys
+  session transcripts to the directory it was *launched* from (`~/.claude/projects/<slug>`),
+  which in multi-vault / parent-dir layouts is not the vault root. The scanner handles that
+  automatically (it falls back to ancestor-directory slugs, counting only transcripts that
+  reference this vault); set this field to pin the exact `~/.claude/projects/<slug>`
+  directory name instead, e.g. `dream_project_slug: "-home-user"`. Diagnose with
+  `.agents/scripts/dream-scan.sh --doctor` (surfaced via `/doctor`).
 
 ## Topical folders (this vault)
 
