@@ -66,22 +66,29 @@ a cross-vault writer — without writing anything:
 ```bash
 .agents/scripts/sync-skills.sh --status
 ```
-Exit code: **0** up to date · **1** drift (this vault's portable set changed since the
-mirror was written, **or** a recorded chat-surface zip export has gone stale) · **2**
-not installed yet. It also prints the owned count, when it was last written, and — if
-another vault wrote it last — a last-writer-wins note. If zip exports were ever
-recorded (step 4), it also diffs each against the current vendored content and lists
-stale ones as "re-export and re-upload: …".
-- If **up to date** (exit 0): say so; do nothing.
-- If **drift** (exit 1) or a **different-vault writer**: explain it, then **offer** to
-  refresh (run step 1) — do not refresh without a yes.
-- If **stale zip exports** are flagged: offer to re-run the export (step 4) for that
-  surface; remind the user the re-upload into the app is manual. A skill flagged
-  "no longer vendored" is different: the fix is deleting the uploaded zip in the app
-  (the manifest entry clears itself on the next export).
-- The check also surfaces any **pinned skill source that fell back** to an unpinned
-  branch on the last sync (recorded in the lock's `fallback_from`); the fix is
-  correcting the `ref` in `.agents/skill-sources.json` and re-running the sync.
+Exit-code contract — every applicable condition prints, and the exit is the **lowest**
+applicable nonzero code (most actionable first):
+- **0** — everything clean.
+- **1** — mirror **stale**: this vault's portable set changed since the mirror was
+  written.
+- **2** — mirror **not installed** yet (or nothing to compare against).
+- **3** — chat-surface **zip export(s) stale or no longer vendored** (step 4).
+- **4** — a **pinned skill source is off its pin** (fell back on the last sync).
+- **5** — **cannot evaluate**: the lock exists but is corrupt (not valid JSON).
+
+It also prints the owned count, when the mirror was last written, and — if another
+vault wrote it last — a last-writer-wins note. What to do per code:
+- **0**: say so; do nothing.
+- **1** or a **different-vault writer**: explain it, then **offer** to refresh (run
+  step 1) — do not refresh without a yes.
+- **3** (stale exports): offer to re-run the export (step 4) for that surface; remind
+  the user the re-upload into the app is manual. A skill flagged "no longer vendored"
+  is different: the fix is deleting the uploaded zip in the app (the manifest entry
+  clears itself on the next export).
+- **4** (pin fallback, recorded in the lock's `fallback_from`): the fix is correcting
+  the `ref` in `.agents/skill-sources.json` and re-running the sync.
+- **5**: the lock file is corrupt — re-run the sync, or restore
+  `.agents/skill-sources.lock.json` from git.
 
 ## 3. Explain the model (so the user isn't surprised later)
 Tell them, briefly:

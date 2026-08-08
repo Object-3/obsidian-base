@@ -27,12 +27,17 @@
 #   4. the lock records per-source {name, repo, ref, ref_type, fetched_sha} —
 #      SHA resolved via the ref itself (SHA pin), the PEELED tag from git
 #      ls-remote (never the tag-object SHA), or the tarball ETag (incl. weak
-#      W/"..." shape); an explicit fallback leaves a fallback_from breadcrumb
-#      that --status surfaces with a nonzero exit
+#      W/"..." shape); a non-SHA ETag ("abc123-gzip", a 64-hex digest) records
+#      EMPTY rather than a spurious substring; an explicit fallback leaves a
+#      fallback_from breadcrumb
 #   5. a legacy names-only lock is readable; the first sync rewrites it in the
 #      enriched schema with .skills/.agents name arrays intact
-#   6. carry-forward: a source that fails to download (or downloads but yields
+#   6. --status exit contract: pin fallback exits 4 on an otherwise-clean
+#      mirror, and 2 (mirror not installed) still wins as the lower code while
+#      the pin warning is reported
+#   7. carry-forward: a source that fails to download (or downloads but yields
 #      zero skills) on a later run keeps its previous lock provenance entry
+#   8. a lock that exists but is corrupt makes --status ERROR with exit 5
 #
 # Exits non-zero if any assertion fails.
 set -uo pipefail
@@ -53,6 +58,7 @@ SHA_BOTH_TAG="5555555555555555555555555555555555555555"
 SHA_BOTH_TAGOBJ="6666666666666666666666666666666666666666"
 SHA_BOTH_BRANCH="7777777777777777777777777777777777777777"
 SHA_QUIET="8888888888888888888888888888888888888888"
+SHA64="9999999999999999999999999999999999999999999999999999999999999999"  # 64-hex decoy
 
 # --- scratch repo with the REAL script (ROOT follows the script's location) ---
 SANDBOX="$WORK/repo"
@@ -65,7 +71,9 @@ cat > "$SANDBOX/.agents/skill-sources.json" <<EOF
   { "name": "pinned", "repo": "up/pinned", "ref": "$SHA_PIN", "skillsPath": "skills" },
   { "name": "gone",   "repo": "up/gone",   "ref": "v9",       "skillsPath": "skills" },
   { "name": "quiet",  "repo": "up/quiet",                     "skillsPath": "skills" },
-  { "name": "both",   "repo": "up/both",   "ref": "v1",       "skillsPath": "skills" }
+  { "name": "both",   "repo": "up/both",   "ref": "v1",       "skillsPath": "skills" },
+  { "name": "badetag",  "repo": "up/badetag",  "ref": "b1",   "skillsPath": "skills" },
+  { "name": "longetag", "repo": "up/longetag", "ref": "b2",   "skillsPath": "skills" }
 ] }
 EOF
 
@@ -85,6 +93,8 @@ mkupstream pinned-sha "pinned-$SHA_PIN"  alpha-sha   "from the pinned sha"
 mkupstream gone-main  "gone-main"        alpha-gone  "from main fallback"
 mkupstream quiet-mstr "quiet-master"     alpha-quiet "from quiet master"
 mkupstream both-v1    "both-v1"          alpha-both  "from the both tag"
+mkupstream badetag-b1 "badetag-b1"       alpha-be1   "non-sha etag"
+mkupstream longetag-b2 "longetag-b2"     alpha-be2   "sixtyfour hex etag"
 # A tarball that downloads fine but contains NO skillsPath (zero-skills run-2 case).
 mkdir -p "$WORK/src-empty/both-empty"; printf 'nothing\n' > "$WORK/src-empty/both-empty/README.md"
 tar -czf "$WORK/empty.tgz" -C "$WORK/src-empty" "both-empty"
@@ -113,6 +123,8 @@ case "\$url" in
   */up/pinned/tar.gz/$SHA_PIN)         serve "$WORK/pinned-sha.tgz" '"$SHA_PIN"' ;;
   */up/gone/tar.gz/refs/heads/main)    serve "$WORK/gone-main.tgz"  'W/"$SHA_MAIN"' ;;
   */up/quiet/tar.gz/refs/heads/master) serve "$WORK/quiet-mstr.tgz" '"$SHA_QUIET"' ;;
+  */up/badetag/tar.gz/refs/tags/b1)    serve "$WORK/badetag-b1.tgz" '"abc123-gzip"' ;;
+  */up/longetag/tar.gz/refs/tags/b2)   serve "$WORK/longetag-b2.tgz" '"$SHA64"' ;;
   */up/both/tar.gz/refs/tags/v1)
     if [ -f "$WORK/empty-both" ]; then serve "$WORK/empty.tgz" '"$SHA_BOTH_TAG"'
     else serve "$WORK/both-v1.tgz" '"$SHA_BOTH_TAG"'; fi ;;
@@ -181,8 +193,8 @@ grep -q "from quiet master" "$CANON/alpha-quiet/SKILL.md" 2>/dev/null \
   && ok "ref-less source fell back main->master and vendored" || bad "'quiet' master fallback did not vendor"
 
 echo "== 4: lock records {name, repo, ref, ref_type, fetched_sha} (+fallback_from) =="
-jq -e '.sources | length == 5' "$NEWLOCK" >/dev/null 2>&1 \
-  && ok "lock has 5 source entries" || bad "lock .sources missing/wrong length: $(jq -c '.sources | length' "$NEWLOCK")"
+jq -e '.sources | length == 7' "$NEWLOCK" >/dev/null 2>&1 \
+  && ok "lock has 7 source entries" || bad "lock .sources missing/wrong length: $(jq -c '.sources | length' "$NEWLOCK")"
 jq -e --arg sha "$SHA_TAG" \
    '.sources[] | select(.name=="tagged") | .repo=="up/tagged" and .ref=="v1" and .ref_type=="tag" and .fetched_sha==$sha and (has("fallback_from") | not)' \
    "$NEWLOCK" >/dev/null 2>&1 \
@@ -208,21 +220,41 @@ jq -e --arg sha "$SHA_BOTH_TAG" \
    "$NEWLOCK" >/dev/null 2>&1 \
   && ok "both: tag namespace + peeled SHA recorded" \
   || bad "both entry wrong: $(jq -c '.sources[]? | select(.name=="both")' "$NEWLOCK")"
+jq -e '.sources[] | select(.name=="badetag") | .fetched_sha==""' "$NEWLOCK" >/dev/null 2>&1 \
+  && ok "badetag: non-SHA ETag (\"abc123-gzip\") records EMPTY, not a substring" \
+  || bad "badetag entry wrong: $(jq -c '.sources[]? | select(.name=="badetag")' "$NEWLOCK")"
+jq -e '.sources[] | select(.name=="longetag") | .fetched_sha==""' "$NEWLOCK" >/dev/null 2>&1 \
+  && ok "longetag: 64-hex ETag records EMPTY (no spurious 40-hex prefix)" \
+  || bad "longetag entry wrong: $(jq -c '.sources[]? | select(.name=="longetag")' "$NEWLOCK")"
+grep -q "could not resolve a commit SHA for badetag@b1" "$OUT" \
+  && grep -q "could not resolve a commit SHA for longetag@b2" "$OUT" \
+  && ok "empty-SHA note printed for both rejected ETags" || bad "missing empty-SHA note for rejected ETags"
 
 echo "== 5: legacy names-only lock readable; rewritten in the enriched schema =="
-jq -e '.skills | sort == ["alpha-both","alpha-gone","alpha-quiet","alpha-sha","alpha-tag"]' "$NEWLOCK" >/dev/null 2>&1 \
+jq -e '.skills | sort == ["alpha-be1","alpha-be2","alpha-both","alpha-gone","alpha-quiet","alpha-sha","alpha-tag"]' "$NEWLOCK" >/dev/null 2>&1 \
   && ok ".skills name array intact (legacy 'stale-old' reconciled away)" || bad ".skills wrong: $(jq -c '.skills' "$NEWLOCK")"
 jq -e '(.agents == []) and has("sources")' "$NEWLOCK" >/dev/null 2>&1 \
   && ok "enriched schema {skills, agents, sources} written" || bad "lock schema not enriched"
 
-echo "== 6: --status surfaces the fallback_from breadcrumb with nonzero exit =="
+echo "== 6: --status exit contract for the pin-fallback breadcrumb =="
+# No mirror installed: the lower code (2) wins, but the pin condition still prints.
 SOUT="$(MIRROR_MANIFEST="$WORK/no-manifest.json" bash "$SANDBOX/.agents/scripts/sync-skills.sh" --status 2>&1)"
 src=$?
-[ "$src" -ne 0 ] && ok "--status exits nonzero with a recorded pin fallback" || bad "--status exited 0 despite pin fallback"
+[ "$src" -eq 2 ] && ok "--status exits 2 (not installed wins as lower code)" || bad "--status rc=$src, want 2 (not installed + pin)"
 printf '%s' "$SOUT" | grep -q "NOT at their pin" \
-  && ok "--status names the off-pin condition" || bad "--status silent about the pin fallback"
+  && ok "pin condition still reported alongside" || bad "--status silent about the pin fallback"
 printf '%s' "$SOUT" | grep -q "gone: pinned v9" \
   && ok "--status shows pinned ref -> vendored ref" || bad "--status missing the pin detail line"
+# Clean, matching mirror manifest: the pin fallback is the ONLY condition -> exit 4.
+hasher="sha256sum"; command -v sha256sum >/dev/null 2>&1 || hasher="shasum -a 256"
+LHASH="$(jq -S '.skills | sort' "$NEWLOCK" | $hasher | cut -d' ' -f1)"
+jq -n --arg h "$LHASH" --arg v "$SANDBOX" \
+   '{owned:[], lock_hash:$h, vault_path:$v, written:"2026-01-01T00:00:00Z", exports:[]}' > "$WORK/mm.json"
+SOUT="$(MIRROR_MANIFEST="$WORK/mm.json" bash "$SANDBOX/.agents/scripts/sync-skills.sh" --status 2>&1)"
+src=$?
+[ "$src" -eq 4 ] && ok "--status exits 4 when the pin fallback is the only condition" || bad "--status rc=$src, want 4 (pin code)"
+printf '%s' "$SOUT" | grep -q "up to date with this vault's portable set" \
+  && ok "mirror portion reads clean around the pin warning" || bad "mirror portion not clean in the exit-4 case"
 
 echo "== 7: carry-forward — failing / zero-skill sources keep run-1 provenance =="
 touch "$WORK/kill-tagged" "$WORK/empty-both"
@@ -246,8 +278,18 @@ jq -e --arg sha "$SHA_BOTH_TAG" \
    "$NEWLOCK" >/dev/null 2>&1 \
   && ok "'both' provenance carried forward (zero-skills branch)" \
   || bad "'both' provenance lost: $(jq -c '.sources[]? | select(.name=="both")' "$NEWLOCK")"
-jq -e '.sources | length == 5' "$NEWLOCK" >/dev/null 2>&1 \
-  && ok "run 2 lock still has 5 source entries" || bad "run 2 lock sources wrong length"
+jq -e '.sources | length == 7' "$NEWLOCK" >/dev/null 2>&1 \
+  && ok "run 2 lock still has 7 source entries" || bad "run 2 lock sources wrong length"
+
+echo "== 8: corrupt lock makes --status ERROR with exit 5 =="
+printf '{"skills": [oops' > "$NEWLOCK"
+SOUT="$(MIRROR_MANIFEST="$WORK/mm.json" bash "$SANDBOX/.agents/scripts/sync-skills.sh" --status 2>&1)"
+src=$?
+[ "$src" -eq 5 ] && ok "--status exits 5 on a corrupt lock" || bad "--status rc=$src on corrupt lock, want 5"
+printf '%s' "$SOUT" | grep -q "not valid JSON" \
+  && ok "corrupt lock reported with a clear ERROR message" || bad "no clear corrupt-lock error message"
+printf '%s' "$SOUT" | grep -q "up to date with this vault's portable set" \
+  && bad "corrupt lock still hashed as a comparison" || ok "no bogus up-to-date/stale verdict from a corrupt lock"
 
 echo
 echo "smoke: $pass passed, $fail failed"

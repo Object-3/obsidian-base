@@ -333,8 +333,9 @@ PY
 }
 
 # Diff the recorded zip exports against the CURRENT vendored content. Prints per
-# surface; returns 0 clean (or nothing recorded), 1 if any export is stale. Called
-# from mirror_status. Caller must have a hasher available; sets $HASHER itself.
+# surface; returns 0 clean (or nothing recorded), 3 if any export is stale or no
+# longer vendored (the exports code of the --status contract — see the --status
+# dispatch). Sets $HASHER itself.
 zip_export_status() {
   [ -f "$MIRROR_MANIFEST" ] || return 0
   local count; count="$(jq '.exports // [] | length' "$MIRROR_MANIFEST" 2>/dev/null || echo 0)"
@@ -362,12 +363,12 @@ zip_export_status() {
     cmd=".agents/scripts/sync-skills.sh --export-zips --surface=$surface"
     [ -n "$dir" ] && cmd="$cmd --export-dir=$dir"
     if [ -n "$stale" ]; then
-      rc=1
+      rc=3
       echo "   ! $surface: stale zip-imported skill(s) — re-export and re-upload:$stale"
       echo "     re-export: $cmd  (upload stays manual)"
     fi
     if [ -n "$gone" ]; then
-      rc=1
+      rc=3
       echo "   ! $surface: no longer vendored — delete the uploaded zip in the app:$gone"
       echo "     (the manifest entry clears on the next: $cmd)"
     fi
@@ -381,22 +382,29 @@ zip_export_status() {
 # Machine-detectable pin health, from the lock's fallback_from breadcrumbs. The
 # SessionStart hook runs the sync with all output discarded, so the PIN FALLBACK
 # warning alone can vanish unseen — the lock entry survives for --status (and any
-# agent/CI) to find. Returns 0 clean, 1 if any pinned source is off its pin.
+# agent/CI) to find. Returns 0 clean, 4 if any pinned source is off its pin, 5 on
+# a corrupt lock (the pin code of the --status contract — see the --status dispatch).
 pin_status() {
   [ -f "$LOCK" ] || return 0
+  if ! jq -e . "$LOCK" >/dev/null 2>&1; then
+    echo "ERROR: lock at $LOCK exists but is not valid JSON — cannot evaluate pin status; re-run the sync or restore the lock from git" >&2
+    return 5
+  fi
   local bad
   bad="$(jq -r '.sources[]? | select((.fallback_from // "") != "") | "\(.name): pinned \(.fallback_from) -> vendored \(.ref)"' "$LOCK" 2>/dev/null)" || bad=""
   [ -n "$bad" ] || return 0
   echo "pinned skill sources NOT at their pin (fell back on the last sync):"
   printf '%s\n' "$bad" | sed 's/^/   ! /'
   echo "   fix each ref in .agents/skill-sources.json (or skill-sources.local.json), then re-run the sync"
-  return 1
+  return 4
 }
 
 # Print user-scope mirror status (offline, read-only): how many skills, when written,
 # whether this vault's portable set has drifted since, and whether another vault wrote
-# it last. Exit: 0 up-to-date, 1 stale/drift, 2 not installed / can't compare. Used by
-# the /install-skills skill and safe for agents/CI to gate on.
+# it last. Returns ONLY the mirror-portion codes of the --status contract (see the
+# --status dispatch below): 0 up-to-date, 1 mirror stale, 2 not installed / can't
+# compare, 5 cannot evaluate (corrupt lock). Zip exports and pin health are checked
+# separately by zip_export_status / pin_status.
 mirror_status() {
   if [ ! -f "$MIRROR_MANIFEST" ]; then
     echo "user-scope mirror: not installed (no manifest at $MIRROR_MANIFEST)"
@@ -405,16 +413,20 @@ mirror_status() {
   fi
   # An exports-only manifest (--export-zips ran on a machine that never mirrored) is
   # NOT an installed mirror: report the mirror portion as not-installed (2) instead
-  # of a bogus stale/different-vault reading — but still check the zip exports it
-  # does record (a stale export upgrades the exit to 1, the actionable code).
+  # of a bogus stale/different-vault reading. The exports it does record are still
+  # checked — by the dispatcher's zip_export_status call, not here.
   if ! jq -e 'has("lock_hash") and has("owned")' "$MIRROR_MANIFEST" >/dev/null 2>&1; then
     echo "user-scope mirror: not installed (manifest at $MIRROR_MANIFEST holds only zip-export records)"
     echo "   enable with: .agents/scripts/sync-skills.sh --mirror-only   (or the /install-skills skill)"
-    local xrc=2
-    zip_export_status || xrc=1
-    return "$xrc"
+    return 2
   fi
   [ -f "$LOCK" ] || { echo "user-scope mirror: no lock at $LOCK to compare against; run the sync first" >&2; return 2; }
+  # A lock that EXISTS but does not parse must be a hard error, never a comparison:
+  # hashing jq's empty output would misreport 'stale' (or worse, 'up to date').
+  if ! jq -e . "$LOCK" >/dev/null 2>&1; then
+    echo "ERROR: lock at $LOCK exists but is not valid JSON — cannot evaluate mirror status; re-run the sync or restore the lock from git" >&2
+    return 5
+  fi
   local hasher
   if   command -v sha256sum >/dev/null 2>&1; then hasher="sha256sum"
   elif command -v shasum    >/dev/null 2>&1; then hasher="shasum -a 256"
@@ -431,32 +443,39 @@ mirror_status() {
     echo "   ! last written from a DIFFERENT vault: $vault"
     echo "     (this vault: $ROOT — refreshing here makes this vault the owner; last-writer-wins)"
   fi
-  local rc=0
   if [ -n "$prev" ] && [ "$prev" = "$cur" ]; then
     echo "   up to date with this vault's portable set"
-  else
-    echo "   ! stale: this vault's portable set has changed since the mirror was written"
-    echo "     refresh with: .agents/scripts/sync-skills.sh --mirror-only   (or the /install-skills skill)"
-    rc=1
+    return 0
   fi
-  # Also diff any recorded chat-surface zip exports (see export_zips) — a stale zip
-  # sitting in a chat app is otherwise invisible; surface it here with the same
-  # stale=1 exit semantics the mirror uses.
-  zip_export_status || rc=1
-  return "$rc"
+  echo "   ! stale: this vault's portable set has changed since the mirror was written"
+  echo "     refresh with: .agents/scripts/sync-skills.sh --mirror-only   (or the /install-skills skill)"
+  return 1
 }
 
 # --mirror-only: refresh the user-scope mirror from the repo's CURRENT vendored set
 # (the committed lock) WITHOUT re-fetching upstream — fast, offline, no concurrency
 # guard needed. This is the path /install-skills uses for a local refresh.
 if [ -n "$MIRROR_ONLY" ]; then mirror_user_scope; exit 0; fi
-# --status: read-only, offline drift check. Capture the rc so set -e doesn't abort on a
-# non-zero (stale/not-installed) status before we can propagate it as the exit code.
+# --status: read-only, offline drift check across three independent concerns.
+# EXIT-CODE CONTRACT (documented in .agents/SKILLS.md + the install-skills skill):
+#   0  everything clean
+#   1  user-scope mirror stale (vault's portable set changed since the mirror write)
+#   2  user-scope mirror not installed / nothing to compare against
+#   3  chat-surface zip export(s) stale or no longer vendored
+#   4  pinned skill source off its pin (fell back on the last sync)
+#   5  cannot evaluate (lock exists but is corrupt / not valid JSON)
+# Every applicable condition is REPORTED in the output; the exit code is the LOWEST
+# applicable nonzero code — the most actionable one (1 < 2 < 3 < 4 < 5). Each rc is
+# captured so set -e doesn't abort before we can propagate it.
 if [ -n "$STATUS_ONLY" ]; then
-  rc=0; mirror_status || rc=$?
-  # A pin fallback recorded in the lock upgrades a clean status to stale (1); it
-  # never masks a 2 (mirror not installed), which already demands its own action.
-  if ! pin_status; then [ "$rc" -eq 0 ] && rc=1; fi
+  mrc=0; mirror_status     || mrc=$?
+  zrc=0; zip_export_status || zrc=$?
+  prc=0; pin_status        || prc=$?
+  rc=0
+  for c in "$mrc" "$zrc" "$prc"; do
+    [ "$c" -ne 0 ] || continue
+    if [ "$rc" -eq 0 ] || [ "$c" -lt "$rc" ]; then rc="$c"; fi
+  done
   exit "$rc"
 fi
 # --export-zips: build per-skill zips for a chat surface from the committed lock —
@@ -572,7 +591,18 @@ fetch() { # repo ref -> echoes extracted dir, or non-zero on failure.
         fi
       fi
       if [ -z "$sha" ] && [ -f "$dest.hdr" ]; then
-        sha="$(grep -i '^etag:' "$dest.hdr" 2>/dev/null | grep -oE '[0-9a-f]{40}' | head -n 1)" || sha=""
+        # Accept the ETag ONLY when, after stripping the weak prefix (W/) and the
+        # quotes, the WHOLE value is exactly 40 hex chars. Anything else — a
+        # "abc123-gzip" style tag, a 64-hex digest (whose first 40 chars a
+        # substring grep would happily misreport as a commit) — records empty,
+        # falling through to the existing best-effort empty-with-note path.
+        sha="$(tr -d '\r' < "$dest.hdr" 2>/dev/null | sed -n 's/^[Ee][Tt][Aa][Gg]:[[:space:]]*//p' | head -n 1)" || sha=""
+        sha="${sha#W/}"; sha="${sha#\"}"; sha="${sha%\"}"
+        case "$sha" in
+          *[!0-9a-f]*) sha="" ;;
+          ????????????????????????????????????????) ;;
+          *) sha="" ;;
+        esac
       fi
       printf '%s' "$sha"  > "$dest.sha"
       printf '%s' "$kind" > "$dest.kind"

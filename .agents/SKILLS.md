@@ -132,6 +132,11 @@ untouched.
   `personal > project`); across multiple vaults the mirror is last-writer-wins, which
   the `/install-skills` status check (`sync-skills.sh --status`) flags via the manifest's
   recorded source hash + vault path.
+- **`--status` exit contract:** `0` all clean · `1` mirror stale · `2` mirror not
+  installed / nothing to compare · `3` chat-surface zip export(s) stale or no longer
+  vendored · `4` pinned source off its pin (fell back on the last sync) · `5` cannot
+  evaluate (lock exists but is corrupt). Every applicable condition prints; the exit
+  code is the **lowest** applicable nonzero one (most actionable first).
 - **Not for chat surfaces:** claude.ai chat — including **Claude Desktop's regular
   chat window** (the Code tab IS reached, the chat window is NOT) — takes skills only
   as a manual zip upload (Settings → Capabilities); ChatGPT has none. The mirror

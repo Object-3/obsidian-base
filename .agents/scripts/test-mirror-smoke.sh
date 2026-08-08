@@ -20,7 +20,8 @@
 #   2. install — a locked skill lands in BOTH targets and is recorded owned
 #   3. manifest schema round-trips
 #   4. owned[] is retained across refresh (the freeze-bug guard)
-#   5. --status exit codes (0 up-to-date / 1 stale / 2 not-installed)
+#   5. --status exit codes (contract: 0 clean / 1 mirror stale / 2 not installed /
+#      3 exports stale-or-gone / 4 pin fallback / 5 corrupt lock; lowest wins)
 #   6. --mirror-only works with no network
 #   7. no staging artifacts leak into the scanned skills root (stages live in the parent)
 #   8. --export-zips builds zips offline and records a manifest entry per export
@@ -125,11 +126,17 @@ bash "$SYNC" --status >/dev/null 2>&1 && ok "status 0 while exports match" || ba
 jq --arg k "$OWN_SKILL" '(.exports[] | select(.skill==$k)).hash = "deadbeef"' \
    "$MIRROR_MANIFEST" > "$MIRROR_MANIFEST.x" && mv "$MIRROR_MANIFEST.x" "$MIRROR_MANIFEST"
 out="$(bash "$SYNC" --status 2>&1)"; rc=$?
-[ "$rc" -eq 1 ] && ok "status 1 on stale export" || bad "status not 1 on stale export (rc=$rc)"
+[ "$rc" -eq 3 ] && ok "status 3 on stale export (exports code)" || bad "status not 3 on stale export (rc=$rc)"
 printf '%s' "$out" | grep -q "re-export and re-upload:.*$OWN_SKILL" \
   && ok "stale skill named with re-export instruction" || bad "no re-export/re-upload flag for stale skill"
 printf '%s' "$out" | grep -q -- "--export-dir=$EXPORTS" \
   && ok "remediation includes the recorded --export-dir" || bad "recorded export dir not in remediation"
+# Precedence: mirror stale (1) + export stale (3) must report BOTH and exit 1 (lowest).
+jq '.lock_hash = "deadbeef"' "$MIRROR_MANIFEST" > "$MIRROR_MANIFEST.x" && mv "$MIRROR_MANIFEST.x" "$MIRROR_MANIFEST"
+out="$(bash "$SYNC" --status 2>&1)"; rc=$?
+[ "$rc" -eq 1 ] && ok "combined mirror+export staleness exits 1 (lowest code)" || bad "combined staleness rc=$rc, want 1"
+printf '%s' "$out" | grep -q "re-export and re-upload" \
+  && ok "export staleness still reported alongside the mirror's" || bad "export staleness masked by mirror staleness"
 
 echo "== 10: exports survive a mirror refresh; re-export is idempotent =="
 bash "$SYNC" --export-zips "--surface=test-chat" "--export-dir=$EXPORTS" >/dev/null 2>&1  # heal the tamper
@@ -148,7 +155,7 @@ echo "== 11: no-longer-vendored skill: own message, prunes on re-export =="
 jq '.exports += [{surface:"test-chat", skill:"zz-not-vendored", hash:"x", dir:"", written:"2020-01-01T00:00:00Z"}]' \
    "$MIRROR_MANIFEST" > "$MIRROR_MANIFEST.x" && mv "$MIRROR_MANIFEST.x" "$MIRROR_MANIFEST"
 out="$(bash "$SYNC" --status 2>&1)"; rc=$?
-[ "$rc" -eq 1 ] && ok "status 1 on a no-longer-vendored export" || bad "status not 1 on gone export (rc=$rc)"
+[ "$rc" -eq 3 ] && ok "status 3 on a no-longer-vendored export" || bad "status not 3 on gone export (rc=$rc)"
 printf '%s' "$out" | grep -q "no longer vendored.*zz-not-vendored" \
   && ok "gone skill gets the delete-the-zip message" || bad "gone skill not distinguished from stale"
 printf '%s' "$out" | grep -q "re-export and re-upload:.*zz-not-vendored" \
