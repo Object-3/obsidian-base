@@ -26,7 +26,27 @@ separate checkout, not the live auto-syncing vault). See "content vs engine" in 
    `CLAUDE.md`, `.gitignore`, `.gitattributes`, `.agents/SKILLS.md`,
    `.agents/skill-sources.json`, `.agents/scripts/*`, `.claude/hooks/*`,
    `.claude/settings.json`), prunes removed files, and reports what changed. Changes are
-   left **staged**.
+   left **staged**. It never touches the vault-local extension points
+   `.githooks/pre-commit.d/` and `.claude/hooks-local/` (+ `.claude/settings.local.json`)
+   — those survive every update, in both directions (your guards are kept; the base
+   can't plant files there either).
+
+   **Read the `!!` warnings — they are loss reports, not noise.** The overlay is
+   whole-file replacement, so the script calls out what it can detect it is dropping:
+   - `!! pruned NON-BASE file '<f>'` — a file tracked in this vault but absent from
+     the base tree was deleted. If the base removed it, fine; if it was a
+     **vault-local addition** (a custom hook/guard), restore it from git history and
+     move it to the matching extension point above, then relay that to the user.
+   - `!! '<f>': N '# vault-local:'-marked line(s) are NOT in the incoming base copy`
+     — marked vault-local lines inside a base-owned file are being dropped;
+     re-apply them via the extension points (or re-add after the run).
+   Unmarked in-file edits (e.g. a bare extra `.gitignore` line) still revert
+   silently — the marker convention is what makes them detectable.
+
+   Every run (including a no-op "Already up to date" one) also writes and stages
+   `.agents/.base-sync` — `<sha> <ref> <iso-timestamp>` (+ `partial-skills` if the
+   base-authored skill overlay was skipped for lack of `jq`). That's the freshness
+   stamp `/doctor` reads to measure base staleness; expect it in the staged diff.
 
    **Point an existing vault at a fork permanently:** write the bare git URL (no
    `user:token@` credentials — the file is tracked) to `.agents/.base-url`, then run
@@ -44,9 +64,12 @@ separate checkout, not the live auto-syncing vault). See "content vs engine" in 
    (it detects the manifest), the global copies don't auto-refresh. **Offer** to run
    `/install-skills` (or `sync-skills.sh --mirror-only`) — consent-gated; don't auto-run.
 
-3. **Review, commit on a branch, open a PR.** `git diff --staged` to review. Commit
-   with `BASE_UPDATE=1 git commit …` — the pre-commit engine guard blocks other
-   engine edits in a derived vault, and this marks the one sanctioned kind.
+3. **Review, commit on a branch, open a PR.** `git diff --staged` to review — the
+   staged `.agents/.base-sync` stamp is expected (per-vault state, not an engine
+   edit; on a no-op run it may be the *only* staged change, and a plain commit of
+   just the stamp needs no `BASE_UPDATE=1`). For a real overlay, commit with
+   `BASE_UPDATE=1 git commit …` — the pre-commit engine guard blocks other engine
+   edits in a derived vault, and this marks the one sanctioned kind.
 
 4. Append a one-line entry to `log.md` noting the base update.
 
